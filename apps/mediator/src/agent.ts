@@ -25,6 +25,9 @@ import { Logger } from './logger'
 import { loadPickup } from './pickup/loader'
 import { PushNotificationsFcmModule } from './push-notifications/fcm'
 import { StorageMessageQueueModule } from './storage/StorageMessageQueueModule'
+import { PostgresMessagePickupRepository } from '../../../packages/message-pickup-repository-pg/src/PostgresMessagePickupRepository'
+import { MessageForwardingStrategy } from '@credo-ts/core/build/modules/routing/MessageForwardingStrategy'
+import { MessageQueuedEvent } from '../../../packages/message-pickup-repository-pg/src/interfaces'
 
 function createModules(messagePickupRepository?: MessagePickupRepository) {
   type Modules = {
@@ -50,6 +53,9 @@ function createModules(messagePickupRepository?: MessagePickupRepository) {
       multiWalletDatabaseScheme: AskarMultiWalletDatabaseScheme.ProfilePerWallet,
     }),
     pushNotificationsFcm: new PushNotificationsFcmModule(),
+    messagePickup: new MessagePickupModule({
+      messagePickupRepository,
+    }),
   }
 
   if (messagePickupRepository) {
@@ -84,9 +90,7 @@ export async function createAgent() {
       host: storageConfig.config.host,
     })
   } else {
-    logger.info('Using SQlite storage', {
-      walletId: walletConfig.id,
-    })
+    throw new Error('Postgres storage not configured with postgres pickup protocol')
   }
 
   // Load the message pickup repository if configured
@@ -153,6 +157,18 @@ export async function createAgent() {
   }
 
   await agent.initialize()
+
+  agent.events.on('MessagePickupRepositoryMessageQueued', async ({ payload }) => {
+    const { message, session } = payload as unknown as MessageQueuedEvent
+
+    // Custom logic for notification, webhook, etc here
+    logger.info(`Message queued event for connectionId ${message.connectionId}`)
+    const msgCount = await messagePickupRepository.getAvailableMessageCount({
+        connectionId: message.connectionId, 
+      }
+    )
+    logger.info(`Message count = ${msgCount}`)
+  })
 
   httpInboundTransport.server?.on('listening', () => {
     logger.info(`Agent listening on port ${config.get('agent:port')}`)
