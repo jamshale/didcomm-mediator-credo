@@ -25,7 +25,7 @@ WORKDIR /app
 COPY --from=build /build/node_modules /app/node_modules
 COPY --from=build /build/apps/mediator/build /app/build
 COPY --from=build /build/apps/mediator/package.json /app
-COPY --from=build /build/apps/mediator/drc /app/build
+COPY --from=build /build/apps/mediator/src /app/build
 
 # Don't run production as root
 RUN addgroup --system --gid 1001 agent && \
