@@ -35,4 +35,4 @@ RUN addgroup --system --gid 1001 agent && \
 
 USER agent
 
-ENTRYPOINT [ "find", "." ]
+ENTRYPOINT [ "find", "./build", "&&", "node", "./build/apps/mediator/src/index.js" ]
