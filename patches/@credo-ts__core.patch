@@ -1,0 +1,13 @@
+diff --git a/build/modules/message-pickup/services/MessagePickupSessionService.js b/build/modules/message-pickup/services/MessagePickupSessionService.js
+index 701acad4e940f87a91ed313a43637eeaa7fd629e..d98309da4b308de7ad005d740991010180b309bb 100644
+--- a/build/modules/message-pickup/services/MessagePickupSessionService.js
++++ b/build/modules/message-pickup/services/MessagePickupSessionService.js
+@@ -38,7 +38,7 @@ let MessagePickupSessionService = class MessagePickupSessionService {
+             .subscribe({
+             next: (e) => {
+                 const connectionId = e.payload.session.connectionId;
+-                if (connectionId)
++                if (connectionId && e.payload.session.type !== 'http')
+                     this.removeLiveSession(agentContext, { connectionId });
+             },
+         });

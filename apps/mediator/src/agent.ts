@@ -6,6 +6,7 @@ import {
   DidCommMimeType,
   HttpOutboundTransport,
   MediatorModule,
+  MessagePickupModule,
   OutOfBandRole,
   OutOfBandState,
   type WalletConfig,
@@ -22,8 +23,11 @@ import { askarPostgresConfig } from './database'
 import { Logger } from './logger'
 import { PushNotificationsFcmModule } from './push-notifications/fcm'
 import { StorageMessageQueueModule } from './storage/StorageMessageQueueModule'
+import { PostgresMessagePickupRepository } from '../../../packages/message-pickup-repository-pg/src/PostgresMessagePickupRepository'
+import { MessageForwardingStrategy } from '@credo-ts/core/build/modules/routing/MessageForwardingStrategy'
+import { MessageQueuedEvent } from '../../../packages/message-pickup-repository-pg/src/interfaces'
 
-function createModules() {
+function createModules(messagePickupRepository: PostgresMessagePickupRepository) {
   const modules = {
     storageModule: new StorageMessageQueueModule(),
     connections: new ConnectionsModule({
@@ -31,12 +35,16 @@ function createModules() {
     }),
     mediator: new MediatorModule({
       autoAcceptMediationRequests: true,
+      messageForwardingStrategy: MessageForwardingStrategy.QueueAndLiveModeDelivery,
     }),
     askar: new AskarModule({
       ariesAskar,
       multiWalletDatabaseScheme: AskarMultiWalletDatabaseScheme.ProfilePerWallet,
     }),
     pushNotificationsFcm: new PushNotificationsFcmModule(),
+    messagePickup: new MessagePickupModule({
+      messagePickupRepository,
+    }),
   }
 
   return modules
@@ -65,12 +73,18 @@ export async function createAgent() {
       host: storageConfig.config.host,
     })
   } else {
-    logger.info('Using SQlite storage', {
-      walletId: walletConfig.id,
-    })
+    throw new Error('Postgres storage not configured with postgres pickup protocol')
   }
 
-  const agent = new Agent({
+  const messagePickupRepository = new PostgresMessagePickupRepository({
+    postgresHost: storageConfig.config.host,
+    postgresUser: config.get('db:user'),
+    postgresPassword: config.get('db:password'),
+    postgresDatabaseName: '',
+    logger: logger,
+  })
+
+  const agent: Agent<any> = new Agent({
     config: {
       label: config.get('agent:name'),
       endpoints: config.get('agent:endpoints'),
@@ -83,7 +97,7 @@ export async function createAgent() {
     },
     dependencies: agentDependencies,
     modules: {
-      ...createModules(),
+      ...createModules(messagePickupRepository),
     },
   })
 
@@ -122,7 +136,20 @@ export async function createAgent() {
     return res.send(outOfBandRecord.outOfBandInvitation.toJSON())
   })
 
+  await messagePickupRepository.initialize({ agent })
+
   await agent.initialize()
+
+  agent.events.on('MessagePickupRepositoryMessageQueued', async ({ payload }) => {
+    const { message, session } = payload as unknown as MessageQueuedEvent
+
+    // Custom logic for notification, webhook, etc here
+    const msgCount = await messagePickupRepository.getAvailableMessageCount({
+        connectionId: message.connectionId, 
+      }
+    )
+    logger.info(`Message count = ${msgCount}`)
+  })
 
   httpInboundTransport.server?.on('listening', () => {
     logger.info(`Agent listening on port ${config.get('agent:port')}`)

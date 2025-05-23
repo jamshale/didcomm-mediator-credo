@@ -3,12 +3,20 @@ import { Logger } from '../../../logger'
 import { firebase } from '../firebase'
 
 export const sendFcmPushNotification = async (deviceToken: string, logger: Logger) => {
+
+  if (firebase === undefined) {
+    logger.warn('Firebase is not initialized. Push notifications are disabled.')
+    return
+  }
+
   if (!config.get('agent:pushNotificationTitle')) {
     throw new Error('Push notification title is missing')
   }
+
   if (!config.get('agent:pushNotificationBody')) {
     throw new Error('Push notification body is missing')
   }
+  
   try {
     const response = await firebase.messaging().send({
       token: deviceToken,
