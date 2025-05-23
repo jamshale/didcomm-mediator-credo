@@ -35,7 +35,7 @@ function createModules(messagePickupRepository: PostgresMessagePickupRepository)
     }),
     mediator: new MediatorModule({
       autoAcceptMediationRequests: true,
-      messageForwardingStrategy: MessageForwardingStrategy.QueueOnly
+      messageForwardingStrategy: MessageForwardingStrategy.QueueAndLiveModeDelivery,
     }),
     askar: new AskarModule({
       ariesAskar,
@@ -144,7 +144,6 @@ export async function createAgent() {
     const { message, session } = payload as unknown as MessageQueuedEvent
 
     // Custom logic for notification, webhook, etc here
-    logger.info(`Message queued event for connectionId ${message.connectionId}`)
     const msgCount = await messagePickupRepository.getAvailableMessageCount({
         connectionId: message.connectionId, 
       }
