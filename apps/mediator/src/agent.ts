@@ -158,18 +158,6 @@ export async function createAgent() {
 
   await agent.initialize()
 
-  agent.events.on('MessagePickupRepositoryMessageQueued', async ({ payload }) => {
-    const { message, session } = payload as unknown as MessageQueuedEvent
-
-    // Custom logic for notification, webhook, etc here
-    logger.info(`Message queued event for connectionId ${message.connectionId}`)
-    const msgCount = await messagePickupRepository.getAvailableMessageCount({
-        connectionId: message.connectionId, 
-      }
-    )
-    logger.info(`Message count = ${msgCount}`)
-  })
-
   httpInboundTransport.server?.on('listening', () => {
     logger.info(`Agent listening on port ${config.get('agent:port')}`)
   })
