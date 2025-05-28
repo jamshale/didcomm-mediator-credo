@@ -84,7 +84,7 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
     try {
       // Initialize the database
       await this.buildPgDatabase()
-      this.logger?.info('[initialize] The database has been build successfully')
+      this.logger?.info('[initialize] The database has been built successfully')
 
       // Configure PostgreSQL pool for the messages collections
       this.messagesCollection = new Pool({
@@ -481,8 +481,8 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
           this.logger?.info(`[buildPgDatabase] PostgresDbService Table "${liveSessionTableName}" created.`)
         } else {
           // If the table exists, clean it (truncate or delete, depending on your requirements).
-          await dbClient.query(`TRUNCATE TABLE ${liveSessionTableName}`)
-          this.logger?.info(`[buildPgDatabase] PostgresDbService Table "${liveSessionTableName}" cleared.`)
+          // await dbClient.query(`TRUNCATE TABLE ${liveSessionTableName}`)
+          // this.logger?.info(`[buildPgDatabase] PostgresDbService Table "${liveSessionTableName}" cleared.`)
         }
 
         // Unlock after table creation
