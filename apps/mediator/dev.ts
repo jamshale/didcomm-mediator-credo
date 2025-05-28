@@ -11,7 +11,7 @@ if (!process.env.NGROK_AUTH_TOKEN) {
   connect({
     port,
     authtoken: process.env.NGROK_AUTH_TOKEN,
-  }).then((app) => {
+  }).then((app: any) => {
     console.log('Got ngrok url:', app.url())
     const url = app.url()
 
