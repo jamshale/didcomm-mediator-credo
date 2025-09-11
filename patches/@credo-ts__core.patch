@@ -1,0 +1,13 @@
+diff --git a/build/modules/message-pickup/services/MessagePickupSessionService.js b/build/modules/message-pickup/services/MessagePickupSessionService.js
+index 701acad4e940f87a91ed313a43637eeaa7fd629e..d004326423598fd18d4af8c77c02298cfae27e2e 100644
+--- a/build/modules/message-pickup/services/MessagePickupSessionService.js
++++ b/build/modules/message-pickup/services/MessagePickupSessionService.js
+@@ -34,7 +34,7 @@ let MessagePickupSessionService = class MessagePickupSessionService {
+         this.sessions = [];
+         eventEmitter
+             .observable(transport_1.TransportEventTypes.TransportSessionRemoved)
+-            .pipe((0, rxjs_1.takeUntil)(stop$))
++            .pipe((0, rxjs_1.filter)((e) => e.payload.session.type === 'WebSocket'), (0, rxjs_1.takeUntil)(stop$))
+             .subscribe({
+             next: (e) => {
+                 const connectionId = e.payload.session.connectionId;

@@ -1,0 +1,13 @@
+diff --git a/build/transport/HttpInboundTransport.js b/build/transport/HttpInboundTransport.js
+index d01e3f5d9011307413c3b12aa00776562fb93248..664cfa58ab7742e206ba765ee636dd6726a1ec4d 100644
+--- a/build/transport/HttpInboundTransport.js
++++ b/build/transport/HttpInboundTransport.js
+@@ -65,7 +65,7 @@ class HttpInboundTransport {
+                     .pipe((0, rxjs_1.filter)((e) => e.type === core_1.AgentEventTypes.AgentMessageProcessed), (0, rxjs_1.filter)((e) => e.payload.encryptedMessage === encryptedMessage), (0, rxjs_1.timeout)({
+                     first: this.processedMessageListenerTimeoutMs,
+                     meta: 'HttpInboundTransport.start',
+-                }))
++                }), (0, rxjs_1.take)(1))
+                     .subscribe(subject);
+                 agent.events.emit(agent.context, {
+                     type: core_1.AgentEventTypes.AgentMessageReceived,
