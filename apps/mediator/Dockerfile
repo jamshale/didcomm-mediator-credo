@@ -46,7 +46,7 @@ RUN addgroup --system --gid 1001 agent && \
 
 USER agent
 
-ENV MALLOC_TRIM_THRESHOLD_=262144
+ENV MALLOC_TRIM_THRESHOLD_=0
 ENV NODE_ENV=production
 
 ENTRYPOINT [ "node", "--max-old-space-size=240", "--optimize-for-size", "--gc-interval=100", "./build/apps/mediator/src/index.js" ]
