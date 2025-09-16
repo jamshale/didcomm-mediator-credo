@@ -17,17 +17,12 @@ RUN pnpm install --node-linker=hoisted --frozen-lockfile && \
   pnpm --filter didcomm-mediator-service build && \
   pnpm prune --prod
 
-# Install jemalloc
+# Install jemalloc, allows loading a different memory allocator
+# to help with memory fragmentation issues in long running node processes
+# See https://jemalloc.net/
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libjemalloc2 \
  && rm -rf /var/lib/apt/lists/*
-
-# Preload jemalloc instead of glibc malloc
-# jemalloc is more predictable with RSS and crypto-heavy loads
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
-
-# Optional: tune jemalloc behavior (releases dirty pages back to OS more aggressively)
-ENV MALLOC_CONF="background_thread:true,dirty_decay_ms:500,muzzy_decay_ms:500"
 
 FROM base AS final
 
@@ -46,7 +41,4 @@ RUN addgroup --system --gid 1001 agent && \
 
 USER agent
 
-ENV MALLOC_TRIM_THRESHOLD_=0
-ENV NODE_ENV=production
-
-ENTRYPOINT [ "node", "--max-old-space-size=240", "--optimize-for-size", "--gc-interval=100", "./build/apps/mediator/src/index.js" ]
+ENTRYPOINT [ "node", "./build/apps/mediator/src/index.js" ]
