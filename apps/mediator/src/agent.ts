@@ -2,6 +2,7 @@ import type { Socket } from 'node:net'
 import { AskarModule, AskarMultiWalletDatabaseScheme } from '@credo-ts/askar'
 import {
   Agent,
+  BaseEvent,
   ConnectionsModule,
   DidCommMimeType,
   HttpOutboundTransport,
@@ -25,6 +26,8 @@ import { Logger } from './logger'
 import { loadPickup } from './pickup/loader'
 import { PushNotificationsFcmModule } from './push-notifications/fcm'
 import { StorageMessageQueueModule } from './storage/StorageMessageQueueModule'
+import { MessageQueuedEventType, MessageQueuedEvent } from '../../../packages/message-pickup-repository-pg/src/interfaces';
+import { sendFcmPushNotification } from './push-notifications/fcm/events/PushNotificationEvent';
 
 function createModules(messagePickupRepository?: MessagePickupRepository) {
   type Modules = {
@@ -172,6 +175,12 @@ export async function createAgent() {
     socketServer.handleUpgrade(request, socket as Socket, head, (socket) => {
       socketServer.emit('connection', socket, request)
     })
+  })
+
+  agent.events.on(MessageQueuedEventType, async (data ) => {
+    const {message, session } = data.payload as unknown as MessageQueuedEvent
+    const pushNotificationRecord = await agent.modules.pushNotificationsFcm.getPushNotificationRecordByConnectionId(message.connectionId)
+    if (pushNotificationRecord.deviceToken) sendFcmPushNotification(pushNotificationRecord.deviceToken, logger)
   })
 
   return agent
