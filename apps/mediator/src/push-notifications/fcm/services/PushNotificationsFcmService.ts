@@ -77,9 +77,17 @@ export class PushNotificationsFcmService {
     }
   }
 
-  public async getPushNotificationRecordByConnectionId(agentContext: AgentContext, connectionId: string) {
-    return await this.pushNotificationsFcmRepository.getSingleByQuery(agentContext, {
-      connectionId,
-    })
+  public async getPushNotificationRecordByConnectionId(
+    agentContext: AgentContext,
+    connectionId: string
+  ): Promise<PushNotificationsFcmRecord | undefined> {
+    try {
+      return await this.pushNotificationsFcmRepository.getSingleByQuery(agentContext, {
+        connectionId,
+      })
+    } catch (error) {
+      this.logger.debug(`No push notification record found for connection id ${connectionId}`)
+      return undefined
+    }
   }
 }
