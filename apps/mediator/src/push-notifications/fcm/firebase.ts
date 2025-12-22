@@ -32,7 +32,7 @@ const setupFirebaseSender = async (agent: Agent) => {
       const pushNotificationRecord = await agent.modules.pushNotificationsFcm.getPushNotificationRecordByConnectionId(
         message.connectionId
       )
-      if (pushNotificationRecord.deviceToken) {
+      if (pushNotificationRecord && pushNotificationRecord.deviceToken) {
         const repository = agent.dependencyManager.resolve(PushNotificationsFcmRepository)
         sendFcmPushNotification(agent.context, repository, pushNotificationRecord, agent.config.logger as Logger)
       }
