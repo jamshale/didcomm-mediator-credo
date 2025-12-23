@@ -7,6 +7,7 @@ import {
 } from '@credo-ts/didcomm'
 import {
   DidCommPushNotificationsFcmDeviceInfoHandler,
+  DidCommPushNotificationsFcmGetDeviceInfoHandler,
   DidCommPushNotificationsFcmProblemReportHandler,
   DidCommPushNotificationsFcmSetDeviceInfoHandler,
 } from './handlers/index.js'
@@ -36,9 +37,31 @@ export class DidCommPushNotificationsFcmApi {
       .resolve(DidCommMessageHandlerRegistry)
       .registerMessageHandlers([
         new DidCommPushNotificationsFcmSetDeviceInfoHandler(this.pushNotificationsService),
+        new DidCommPushNotificationsFcmGetDeviceInfoHandler(),
         new DidCommPushNotificationsFcmDeviceInfoHandler(),
         new DidCommPushNotificationsFcmProblemReportHandler(),
       ])
+  }
+
+  /**
+   * Sends a set request with the fcm device info (token) to another agent via a `connectionId`
+   *
+   * @param connectionId The connection ID string
+   * @param deviceInfo The FCM device info
+   * @returns Promise<void>
+   */
+  public async setDeviceInfo(options: { connectionId: string; deviceInfo: DidCommFcmDeviceInfo }) {
+    const { connectionId, deviceInfo } = options
+    const connection = await this.connectionService.getById(this.agentContext, connectionId)
+    connection.assertReady()
+
+    const message = this.pushNotificationsService.createSetDeviceInfo(deviceInfo)
+
+    const outbound = new DidCommOutboundMessageContext(message, {
+      agentContext: this.agentContext,
+      connection,
+    })
+    await this.messageSender.sendMessage(outbound)
   }
 
   /**
@@ -59,7 +82,27 @@ export class DidCommPushNotificationsFcmApi {
 
     const outbound = new DidCommOutboundMessageContext(message, {
       agentContext: this.agentContext,
-      connection: connection,
+      connection,
+    })
+    await this.messageSender.sendMessage(outbound)
+  }
+
+  /**
+   * Gets the fcm device info (token) from another agent via the `connectionId`
+   *
+   * @param connectionId The connection ID string
+   * @returns Promise<void>
+   */
+  public async getDeviceInfo(options: { connectionId: string }) {
+    const { connectionId } = options
+    const connection = await this.connectionService.getById(this.agentContext, connectionId)
+    connection.assertReady()
+
+    const message = this.pushNotificationsService.createGetDeviceInfo()
+
+    const outbound = new DidCommOutboundMessageContext(message, {
+      agentContext: this.agentContext,
+      connection,
     })
     await this.messageSender.sendMessage(outbound)
   }
