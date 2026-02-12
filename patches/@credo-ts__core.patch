@@ -1,0 +1,45 @@
+diff --git a/build/agent/TransportService.js b/build/agent/TransportService.js
+index 3a9174f399c78d9712f5ca67ada9a42de347610e..6f4fd058c17d66a6b194fe95f167e5c54dac980a 100644
+--- a/build/agent/TransportService.js
++++ b/build/agent/TransportService.js
+@@ -23,14 +23,17 @@ let TransportService = class TransportService {
+         this.eventEmitter = eventEmitter;
+     }
+     saveSession(session) {
+-        if (session.connectionId) {
+-            const oldSessions = this.getExistingSessionsForConnectionIdAndType(session.connectionId, session.type);
+-            oldSessions.forEach((oldSession) => {
+-                if (oldSession && oldSession.id !== session.id) {
+-                    this.removeSession(oldSession);
+-                }
+-            });
+-        }
++        // For our mediator project we can't delete sessions on connecion id because the pickup repository listens to this event to manage it's persisted pickup sessions.
++        //  If we would delete sessions here, the pickup repository would delete the pickup session as well, which would cause transport issues.
++        
++        // if (session.connectionId) {
++        //     const oldSessions = this.getExistingSessionsForConnectionIdAndType(session.connectionId, session.type);
++        //     oldSessions.forEach((oldSession) => {
++        //         if (oldSession && oldSession.id !== session.id) {
++        //             this.removeSession(oldSession);
++        //         }
++        //     });
++        // }
+         this.transportSessionTable[session.id] = session;
+         this.eventEmitter.emit(this.agentContext, {
+             type: transport_1.TransportEventTypes.TransportSessionSaved,
+diff --git a/build/modules/message-pickup/services/MessagePickupSessionService.js b/build/modules/message-pickup/services/MessagePickupSessionService.js
+index d004326423598fd18d4af8c77c02298cfae27e2e..13688231ae82f08afa7ddb1d062c5f49ad05a5dc 100644
+--- a/build/modules/message-pickup/services/MessagePickupSessionService.js
++++ b/build/modules/message-pickup/services/MessagePickupSessionService.js
+@@ -52,8 +52,8 @@ let MessagePickupSessionService = class MessagePickupSessionService {
+     }
+     saveLiveSession(agentContext, options) {
+         const { connectionId, protocolVersion, role } = options;
+-        // First remove any live session for the given connection Id
+-        this.removeLiveSession(agentContext, { connectionId });
++        // Disable removing existing live session. This causes trouble with the pickup repository and they are cleaned up anyway when the transport session is removed.
++        // this.removeLiveSession(agentContext, { connectionId });
+         const session = {
+             id: (0, uuid_1.uuid)(),
+             connectionId,

@@ -3,12 +3,17 @@ import * as os from 'node:os'
 import {
   AddMessageOptions,
   Agent,
+  ConnectionRecord,
+  ConnectionService,
+  DidExchangeState,
   GetAvailableMessageCountOptions,
   Logger,
   MessagePickupEventTypes,
   MessagePickupLiveSessionRemovedEvent,
   MessagePickupLiveSessionSavedEvent,
   MessagePickupRepository,
+  MessagePickupSessionService,
+  MessageSender,
   QueuedMessage,
   RemoveMessagesOptions,
   TakeFromQueueOptions,
@@ -18,6 +23,7 @@ import {
   MessagePickupSession,
   MessagePickupSessionRole,
 } from '@credo-ts/core/build/modules/message-pickup/MessagePickupSession'
+import { MessageForwardingStrategy } from '@credo-ts/core/build/modules/routing/MessageForwardingStrategy'
 import { Pool } from 'pg'
 import PGPubsub from 'pg-pubsub'
 import {
@@ -99,6 +105,8 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
       // Set instance variables
       this.agent = options.agent
 
+      const trustPingReceivedSet = new Map<string, Date>()
+
       // Register event handlers
       options.agent.events.on(
         MessagePickupEventTypes.LiveSessionRemoved,
@@ -110,6 +118,7 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
             // Verify message sending method and delete session record from DB
             await this.checkQueueMessages(connectionId)
             await this.removeLiveSessionOnDb(connectionId)
+            trustPingReceivedSet.delete(connectionId)
           } catch (handlerError) {
             this.logger?.error(`Error handling LiveSessionRemoved: ${handlerError}`)
           }
@@ -130,6 +139,114 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
           }
         }
       )
+
+      const connectionsService = this.agent.dependencyManager.resolve(ConnectionService)
+      const pickupSessionService = this.agent.dependencyManager.resolve(MessagePickupSessionService)
+      const messageSender = this.agent.dependencyManager.resolve(MessageSender)
+
+      // Backwards compatibility middleware for legacy implicit connections
+      if (this.agent.mediator.config.messageForwardingStrategy === MessageForwardingStrategy.QueueAndLiveModeDelivery) {
+        this.agent.dependencyManager.registerMessageHandlerMiddleware(async (context, next) => {
+
+          const connection = context.connection as ConnectionRecord | undefined
+
+          if (!connection) {
+            await next()
+            return
+          }
+
+          if (
+            context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/keylist-update' || 
+            context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/mediate-request'  ||
+            context.message.type === 'https://didcomm.org/messagepickup/2.0/live-delivery-change' ||
+            context.message.type === 'https://didcomm.org/trust_ping/1.0/ping'
+          ) {
+
+            this.logger?.debug(
+              `[MessageHandlerMiddleware] Intercepted message of type ${context.message.type} for pickup processing.`
+            )
+
+            const connectionId = connection.id
+            const theirDid = connection.theirDid
+            const encryptedMessage = context.encryptedMessage
+
+            if (!connectionId || !theirDid || !encryptedMessage) {
+              this.logger?.warn(
+                '[MessageHandlerMiddleware] Invalid context for live pickup session creation type message.'
+              )
+            } else {
+
+              // We only create a live session for trust pings if the connection is ready
+              if (context.message.type === 'https://didcomm.org/trust_ping/1.0/ping') {
+                this.logger?.debug(
+                  `[MessageHandlerMiddleware] Processing trust ping message for connectionId: ${connectionId}`
+                )
+                if (connection.state !== DidExchangeState.Completed && !connection.getTag('completedConnection') || !connection.isReady) {
+                  connection.setTag('completedConnection', true)
+                  await connectionsService.update(context.agentContext, connection)
+                  return
+                }
+                
+                const twoSeconds = 2 * 1000;
+                const now = Date.now();
+
+                if (trustPingReceivedSet.has(connectionId)) {
+                  const lastReceived = trustPingReceivedSet.get(connectionId)
+                  if (lastReceived && (now - lastReceived.getTime() < twoSeconds)) {
+                    this.logger?.debug(
+                      `Ignoring trust ping message for connectionId: ${connectionId} because a live pickup session was created less than 2 seconds ago.`
+                    )
+                    trustPingReceivedSet.set(connectionId, new Date())
+                    return
+                  }
+                }
+
+                trustPingReceivedSet.set(connectionId, new Date())
+              }
+
+              // For live-delivery-change messages we are already creating the live session manually so we ignore it here.
+              if (context.message.type === 'https://didcomm.org/messagepickup/2.0/live-delivery-change') {
+                return
+              }
+
+              const sessionInDB = await this.findLiveSessionInDb(connectionId)
+
+              if (!sessionInDB) {
+                pickupSessionService.saveLiveSession(options.agent.context, {
+                  connectionId: connectionId,
+                  protocolVersion: 'v2',
+                  role: MessagePickupSessionRole.MessageHolder,
+                })
+              }
+
+              await next()
+
+              // Implicit pickup needs to manually deliver messages from the queue
+              const messagesToDeliver = await this.takeFromQueue({
+                connectionId: connectionId,
+                limit: 10,
+                deleteMessages: true,
+                recipientDid: theirDid,
+              })
+
+              if (messagesToDeliver.length !== 0) {
+                const connection = await connectionsService.getById(options.agent.context, connectionId)
+                for (const message of messagesToDeliver) {
+                  await messageSender.sendPackage(options.agent.context, {
+                    connection,
+                    recipientKey: connection.did ?? connection.id,
+                    encryptedMessage: message.encryptedMessage,
+                    options: { transportPriority: { schemes: ['ws', 'wss'], restrictive: true } },
+                  })
+                }
+              }
+              return
+            }
+          }
+
+          await next()
+        })
+      }
     } catch (error) {
       this.logger?.error(`[initialize] Initialization failed: ${error}`)
       throw new Error(`Failed to initialize the service: ${error}`)

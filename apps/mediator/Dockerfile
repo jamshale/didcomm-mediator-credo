@@ -33,6 +33,9 @@ COPY --from=build /build/node_modules /app/node_modules
 COPY --from=build /build/apps/mediator/build /app/build
 COPY --from=build /build/apps/mediator/package.json /app
 
+# Copy the pickup repository migration files
+COPY --from=build /build/packages/message-pickup-repository-pg/src/migrations /app/build/packages/message-pickup-repository-pg/src/migrations
+
 # Don't run production as root
 RUN addgroup --system --gid 1001 agent && \
   adduser --system --uid 1001 agent && \
