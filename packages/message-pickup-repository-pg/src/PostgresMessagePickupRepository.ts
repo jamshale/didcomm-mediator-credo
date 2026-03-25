@@ -6,8 +6,11 @@ import {
   ConnectionRecord,
   ConnectionService,
   DidExchangeState,
+  DidKey,
   GetAvailableMessageCountOptions,
+  KeylistUpdateMessage,
   Logger,
+  MediationRepository,
   MessagePickupEventTypes,
   MessagePickupLiveSessionRemovedEvent,
   MessagePickupLiveSessionSavedEvent,
@@ -143,11 +146,11 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
       const connectionsService = this.agent.dependencyManager.resolve(ConnectionService)
       const pickupSessionService = this.agent.dependencyManager.resolve(MessagePickupSessionService)
       const messageSender = this.agent.dependencyManager.resolve(MessageSender)
+      const mediationRepository = this.agent.dependencyManager.resolve(MediationRepository)
 
       // Backwards compatibility middleware for legacy implicit connections
       if (this.agent.mediator.config.messageForwardingStrategy === MessageForwardingStrategy.QueueAndLiveModeDelivery) {
         this.agent.dependencyManager.registerMessageHandlerMiddleware(async (context, next) => {
-
           const connection = context.connection as ConnectionRecord | undefined
 
           if (!connection) {
@@ -156,12 +159,11 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
           }
 
           if (
-            context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/keylist-update' || 
-            context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/mediate-request'  ||
+            context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/keylist-update' ||
+            context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/mediate-request' ||
             context.message.type === 'https://didcomm.org/messagepickup/2.0/live-delivery-change' ||
             context.message.type === 'https://didcomm.org/trust_ping/1.0/ping'
           ) {
-
             this.logger?.debug(
               `[MessageHandlerMiddleware] Intercepted message of type ${context.message.type} for pickup processing.`
             )
@@ -175,20 +177,62 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
                 '[MessageHandlerMiddleware] Invalid context for live pickup session creation type message.'
               )
             } else {
+              // This block is to handle situations where the recipient is attempting to add the recipient key to multiple
+              // mediation records. Since we are allowing multiple connections to use the same recipient key, we need to delete
+              // the mediation record for the recipient key when we see an "add" action in a keylist update message.
+              // This is to prevent the mediation record duplicate records for the same recipient key.
+              if (context.message.type === 'https://didcomm.org/coordinate-mediation/1.0/keylist-update') {
+                this.logger?.debug(
+                  `[MessageHandlerMiddleware] Processing keylist update message for connectionId: ${connectionId}`
+                )
+                const keyListUpdateMessage = context.message as KeylistUpdateMessage
+                const addRecipientKeyUpdate = keyListUpdateMessage.updates.find(update => update.action === 'add')
+                if (!addRecipientKeyUpdate) {
+                  this.logger?.debug(
+                    `[MessageHandlerMiddleware] No "add" action found in keylist update message for connectionId: ${connectionId}. Skipping live session creation.`
+                  )
+                } else {
+                  try {
+                    const didKey = DidKey.fromDid(addRecipientKeyUpdate.recipientKey)
+                    this.logger?.debug(
+                      `[MessageHandlerMiddleware] Attempting to find mediation record for recipient key: [${didKey.key.publicKeyBase58}]`
+                    )
+                    const mediationRecord = await mediationRepository.getSingleByRecipientKey(options.agent.context, didKey.key.publicKeyBase58)
+                    // We can't have duplicate keys in a mediation record. We are allowing a new connection to use this key.
+                    // Set the recipient keys to an empty array to prevent the mediation record from being found in subsequent messages,
+                    // effectively deleting the mediation record without actually deleting it from the database.
+                    // It will be removed later by a separate cleanup process.
+                    this.logger?.debug(
+                      `[MessageHandlerMiddleware] Found mediation record for recipient key: [${didKey.key.publicKeyBase58}] Removing recipient keys to avoid duplication.`
+                    )
+                    mediationRecord.recipientKeys = []
+                    await mediationRepository.update(options.agent.context, mediationRecord)
+                  } catch (error) {
+                    this.logger?.warn(
+                      `[MessageHandlerMiddleware] Failed to clean up mediation record for connectionId: ${connectionId}. Error: ${error}`
+                    )
+                  }
+                }
+              }
 
               // We only create a live session for trust pings if the connection is ready
               if (context.message.type === 'https://didcomm.org/trust_ping/1.0/ping') {
                 this.logger?.debug(
                   `[MessageHandlerMiddleware] Processing trust ping message for connectionId: ${connectionId}`
                 )
-                if (connection.state !== DidExchangeState.Completed && !connection.getTag('completedConnection') || !connection.isReady) {
+                const hasCompletedConnectionTag = Boolean(connection.getTag('completedConnection'))
+                const connectionStateIncomplete = connection.state !== DidExchangeState.Completed
+                const shouldSkipTrustPingSessionCreation =
+                  (connectionStateIncomplete && !hasCompletedConnectionTag) || !connection.isReady
+
+                if (shouldSkipTrustPingSessionCreation) {
                   connection.setTag('completedConnection', true)
                   await connectionsService.update(context.agentContext, connection)
                   return
                 }
-                
-                const twoSeconds = 2 * 1000;
-                const now = Date.now();
+
+                const twoSeconds = 2 * 1000
+                const now = Date.now()
 
                 if (trustPingReceivedSet.has(connectionId)) {
                   const lastReceived = trustPingReceivedSet.get(connectionId)
@@ -210,16 +254,18 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
               }
 
               const sessionInDB = await this.findLiveSessionInDb(connectionId)
+              const shouldCreateLiveSession = !sessionInDB
 
-              if (!sessionInDB) {
-                pickupSessionService.saveLiveSession(options.agent.context, {
+              await next()
+
+              if (shouldCreateLiveSession) {
+                await pickupSessionService.saveLiveSession(options.agent.context, {
                   connectionId: connectionId,
                   protocolVersion: 'v2',
                   role: MessagePickupSessionRole.MessageHolder,
                 })
+                void this.setLastSeenBackgroundJob(connection, connectionsService)
               }
-
-              await next()
 
               // Implicit pickup needs to manually deliver messages from the queue
               const messagesToDeliver = await this.takeFromQueue({
@@ -765,6 +811,21 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
         session,
       },
     })
+  }
+
+  private async setLastSeenBackgroundJob(connection: ConnectionRecord, connectionsService: ConnectionService) {
+    if (!this.agent) {
+      this.logger?.error('[setLastSeenBackgroundJob] Agent is not initialized.')
+      return
+    }
+    
+    try {
+      connection.setTag('lastSeen', new Date().toISOString())
+      await connectionsService.update(this.agent.context, connection)
+      this.logger?.debug(`Updated lastSeen for connectionId: ${connection.id}`)
+    } catch (error) {
+      this.logger?.error(`Error updating lastSeen for connectionId: ${connection.id}: ${error}`)
+    }
   }
 
   public async cleanupLiveSessionsAndExit(): Promise<void> {
