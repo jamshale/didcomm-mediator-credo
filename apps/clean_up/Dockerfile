@@ -14,7 +14,7 @@ WORKDIR /workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/clean_up/package.json ./apps/clean_up/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --node-linker=hoisted --frozen-lockfile
 
 COPY apps/clean_up ./apps/clean_up
 
@@ -26,8 +26,8 @@ WORKDIR /app
 
 COPY --from=build /workspace/node_modules ./node_modules
 COPY --from=build /workspace/apps/clean_up/package.json ./apps/clean_up/package.json
-COPY --from=build /workspace/apps/clean_up/dist ./apps/clean_up/dist
+COPY --from=build /workspace/apps/clean_up/build ./apps/clean_up/build
 
 WORKDIR /app/apps/clean_up
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "build/main.js"]

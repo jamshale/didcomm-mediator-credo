@@ -2,7 +2,6 @@
   "name": "credo-mediator-cleanup-ts",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.24.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@openwallet-foundation/askar-nodejs",
@@ -14,7 +13,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prestart": "pnpm build",
-    "start": "node dist/main.js",
+    "start": "node build/main.js",
     "test": "vitest run"
   },
   "dependencies": {
