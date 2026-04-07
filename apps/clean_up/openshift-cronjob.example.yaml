@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: credo-mediator-cleanup
+spec:
+  schedule: "0 3 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cleanup
+              image: your-registry.example.com/didcomm-mediator-cleanup:latest
+              command:
+                - pnpm
+                - start
+              env:
+                - name: WALLET_URI
+                  valueFrom:
+                    secretKeyRef:
+                      name: credo-mediator-cleanup
+                      key: wallet-uri
+                - name: PICKUP_REPOSITORY_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: credo-mediator-cleanup
+                      key: pickup-repository-url
+                - name: WALLET_NAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: credo-mediator-cleanup
+                      key: wallet-name
+                - name: WALLET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: credo-mediator-cleanup
+                      key: wallet-key
+                - name: WALLET_KEY_DERIVATION_METHOD
+                  value: ARGON2I_MOD
+                - name: INACTIVE_DAYS_THRESHOLD
+                  value: "365"

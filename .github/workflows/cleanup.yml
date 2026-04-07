@@ -1,0 +1,70 @@
+name: Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch or ref to build
+        required: true
+        default: main
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  validate:
+    name: Validate Cleanup
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run cleanup tests
+        run: pnpm --filter credo-mediator-cleanup-ts test
+
+      - name: Build cleanup package
+        run: pnpm --filter credo-mediator-cleanup-ts build
+
+      - name: Build cleanup image
+        run: docker build -f apps/clean_up/Dockerfile -t didcomm-mediator-cleanup:ci .
+
+  publish-image:
+    name: Publish Cleanup Image
+    needs: validate
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Build cleanup image
+        uses: ./.github/actions/docker-build
+        with:
+          registry: ${{ env.REGISTRY }}
+          image_name: ${{ github.repository }}/cleanup
+          context: ./
+          dockerfile: apps/clean_up/Dockerfile
+          docker_user: ${{ github.actor }}
+          docker_password: ${{ secrets.GITHUB_TOKEN }}
