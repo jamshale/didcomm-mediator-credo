@@ -168,6 +168,30 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
           return []
         }
 
+        const deleteQuery = `
+          DELETE FROM queued_message
+          WHERE id IN (
+            SELECT id
+            FROM queued_message
+            WHERE (connection_id = $1 OR $2 = ANY (recipient_dids))
+              AND state = 'pending'
+            ORDER BY created_at
+            LIMIT $3
+          )
+          RETURNING id, encrypted_message, state, created_at;
+        `
+        const deleteParams = [connectionId, recipientDid, limit ?? 0]
+        const deleteResult = await this.messagesCollection?.query(deleteQuery, deleteParams)
+
+        if (!deleteResult || deleteResult.rows.length === 0) {
+          this.logger?.debug(`[takeFromQueue] No messages deleted for ConnectionId: ${connectionId}`)
+          return []
+        }
+
+        this.logger?.debug(
+          `[takeFromQueue] ${deleteResult.rows.length} messages deleted from queue for ConnectionId: ${connectionId}`
+        )
+
         return result.rows.map((message) => ({
           id: message.id,
           encryptedMessage: message.encrypted_message,
@@ -399,21 +423,27 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
           `[initializeMessageListener] Received new message on channel: ${channel} for connectionId: ${connectionId}`
         )
 
-        // Fetch the local live session for the given connectionId
-        const pickupLiveSession = await this.findLocalLiveSession(connectionId)
-
-        if (pickupLiveSession) {
-          this.logger?.debug(
-            `[initializeMessageListener] ${this.instanceName} found a LiveSession on channel: ${channel} for connectionId: ${connectionId}. Delivering messages.`
-          )
-
-          // Deliver messages from the queue for the live session
-          await this.agent?.messagePickup.deliverMessagesFromQueue({
-            pickupSessionId: pickupLiveSession.id,
-          })
-        } else {
-          this.logger?.debug(
-            `[initializeMessageListener] No LiveSession found on channel: ${channel} for connectionId: ${connectionId}.`
+        try {
+          // Fetch the local live session for the given connectionId
+          const pickupLiveSession = await this.findLocalLiveSession(connectionId)
+  
+          if (pickupLiveSession) {
+            this.logger?.debug(
+              `[initializeMessageListener] ${this.instanceName} found a LiveSession on channel: ${channel} for connectionId: ${connectionId}. Delivering messages.`
+            )
+  
+            // Deliver messages from the queue for the live session
+            await this.agent?.messagePickup.deliverMessagesFromQueue({
+              pickupSessionId: pickupLiveSession.id,
+            })
+          } else {
+            this.logger?.debug(
+              `[initializeMessageListener] No LiveSession found on channel: ${channel} for connectionId: ${connectionId}.`
+            )
+          }
+        } catch (error) {
+          this.logger?.error(
+            `[initializeMessageListener] Error processing message for channel: ${channel} and connectionId: ${connectionId}: ${error}`
           )
         }
       })
@@ -479,23 +509,52 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
    * @param connectionId
    * @returns liveSession object or false
    */
-  private async findLiveSessionInDb(connectionId: string): Promise<ExtendedMessagePickupSession | undefined> {
-    this.logger?.debug(`[findLiveSessionInDb] initializing find registry for connectionId ${connectionId}`)
+  private async findLiveSessionInDb(
+    connectionId: string
+  ): Promise<ExtendedMessagePickupSession | undefined> {
+    this.logger?.debug(
+      `[findLiveSessionInDb] initializing find registry for connectionId ${connectionId}`
+    )
+
     if (!connectionId) throw new Error('connectionId is not defined')
+
     try {
       const queryLiveSession = await this.messagesCollection?.query(
-        'SELECT session_id, connection_id, protocol_version FROM live_session WHERE connection_id = $1 LIMIT $2',
-        [connectionId, 1]
+        `
+        SELECT session_id, connection_id, protocol_version
+        FROM live_session
+        WHERE connection_id = $1
+          AND expires_at > now()
+        ORDER BY created_at DESC
+        LIMIT 1
+        `,
+        [connectionId]
       )
-      // Check if liveSession is not empty (record found)
-      const recordFound = queryLiveSession?.rows && queryLiveSession.rows.length > 0
-      this.logger?.debug(`[findLiveSessionInDb] record found status ${recordFound} to connectionId ${connectionId}`)
+
+      if (!queryLiveSession) {
+        this.logger?.debug(
+          `[findLiveSessionInDb] No live session found in DB for connectionId ${connectionId}`
+        )
+        return undefined
+      }
+
+      const recordFound = queryLiveSession?.rows?.length > 0
+      this.logger?.debug(
+        `[findLiveSessionInDb] active record found=${recordFound} for connectionId ${connectionId}`
+      )
+
       return recordFound
-        ? { ...queryLiveSession.rows[0], role: MessagePickupSessionRole.MessageHolder, isLocalSession: false }
+        ? {
+            ...queryLiveSession.rows[0],
+            role: MessagePickupSessionRole.MessageHolder,
+            isLocalSession: false,
+          }
         : undefined
     } catch (error) {
-      this.logger?.debug(`[findLiveSessionInDb] Error find to connectionId ${connectionId}`)
-      return undefined // Return false in case of an error
+      this.logger?.debug(
+        `[findLiveSessionInDb] Error finding liveSession for connectionId ${connectionId}: ${error}`
+      )
+      return undefined
     }
   }
 
@@ -509,14 +568,32 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
     this.logger?.debug(`[addLiveSessionOnDb] initializing add LiveSession DB to connectionId ${connectionId}`)
     if (!session) throw new Error('session is not defined')
     try {
-      const insertMessageDB = await this.messagesCollection?.query(
-        'INSERT INTO live_session (session_id, connection_id, protocol_version, instance) VALUES($1, $2, $3, $4) RETURNING session_id',
+      const insertQuery = `
+        INSERT INTO live_session (session_id, connection_id, protocol_version, instance, expires_at, created_at)
+        SELECT $1, $2::varchar, $3, $4, now() + interval '10 minutes', now()
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM live_session
+          WHERE connection_id = $2::varchar
+            AND expires_at > now()
+        )
+        RETURNING session_id
+      `
+      const result = await this.messagesCollection?.query(
+        insertQuery,
         [id, connectionId, protocolVersion, instance]
       )
-      const liveSessionId: MessagePickupSession['id'] = insertMessageDB?.rows[0].session_id
-      this.logger?.debug(
-        `[addLiveSessionOnDb] add liveSession to liveSessionId ${liveSessionId} to connectionId ${connectionId}`
-      )
+
+      if (result?.rows?.length) {
+        const liveSessionId: MessagePickupSession['id'] = result.rows[0].session_id
+        this.logger?.debug(
+          `[addLiveSessionOnDb] added liveSessionId ${liveSessionId} to connectionId ${connectionId}`
+        )
+      } else {
+        this.logger?.debug(
+          `[addLiveSessionOnDb] skipped adding live session: active session already exists for connectionId ${connectionId}`
+        )
+      }
     } catch (error) {
       this.logger?.debug(`[addLiveSessionOnDb] error add liveSession DB ${connectionId}`)
     }
@@ -572,4 +649,22 @@ export class PostgresMessagePickupRepository implements MessagePickupRepository 
       },
     })
   }
+
+  public async cleanupLiveSessionsAndExit(): Promise<void> {
+    this.logger?.info('[cleanupLiveSessions] Cleaning up expired live sessions from the database.')
+    try {
+      const query = 'DELETE FROM live_session WHERE instance = $1'
+
+      const queryParams = [this.instanceName]
+
+      await this.messagesCollection?.query(query, queryParams)
+
+      this.logger?.debug(`[cleanupLiveSessions] removed all live session for ${this.instanceName}`)
+    } catch (error) {
+      this.logger?.error(`[cleanupLiveSessions] Error removing live sessions on ${this.instanceName}: ${error}`)
+    } finally {
+      process.exit(0)
+    }
+  }
 }
+
