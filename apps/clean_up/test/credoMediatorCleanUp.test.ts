@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type AskarSession,
   CredoMediatorCleanUp,
   type AskarRecord,
   type AskarStore,
@@ -64,6 +65,27 @@ class FakeStore implements AskarStore {
   public closed = false;
 
   public constructor(private readonly transactions: AskarTransaction[]) {}
+
+  public async fetchAll(
+    category: string,
+    options?: { tagFilter?: Record<string, string>; limit?: number },
+  ): Promise<AskarRecord[]> {
+    const txn = this.transactions.shift();
+    if (!txn) {
+      throw new Error("No transaction available");
+    }
+
+    return txn.fetchAll(category, options);
+  }
+
+  public async withSession<T>(callback: (session: AskarSession) => Promise<T>): Promise<T> {
+    const txn = this.transactions.shift();
+    if (!txn) {
+      throw new Error("No transaction available");
+    }
+
+    return callback(txn);
+  }
 
   public async withTransaction<T>(callback: (txn: AskarTransaction) => Promise<T>): Promise<T> {
     const txn = this.transactions.shift();
@@ -201,7 +223,7 @@ describe("CredoMediatorCleanUp", () => {
       ["MediationRecord", "mediation-1"],
       ["PushNotificationsFcmRecord", "firebase-1"],
     ]);
-    expect(txn.committed).toBe(true);
+    expect(txn.committed).toBe(false);
     expect(store.closed).toBe(true);
     expect(walletClose).toHaveBeenCalledOnce();
     expect(end).toHaveBeenCalledOnce();
@@ -271,7 +293,7 @@ describe("CredoMediatorCleanUp", () => {
           tags: {},
         },
       ]);
-      expect(txn.committed).toBe(true);
+      expect(txn.committed).toBe(false);
       expect(store.closed).toBe(true);
       expect(walletClose).toHaveBeenCalledOnce();
     } finally {

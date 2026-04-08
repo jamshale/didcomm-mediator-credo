@@ -1,5 +1,6 @@
 import {
   KdfMethod,
+  type Session,
   Store,
   StoreKeyMethod,
   type EntryObject,
@@ -7,6 +8,7 @@ import {
 
 import type {
   AskarRecord,
+  AskarSession,
   AskarStore,
   AskarStoreFactory,
   AskarTransaction,
@@ -22,10 +24,56 @@ export function createAskarNodeJsStoreFactory(): AskarStoreFactory {
       });
 
       return {
+        async fetchAll(
+          category: string,
+          options?: { tagFilter?: Record<string, string>; limit?: number },
+        ): Promise<AskarRecord[]> {
+          const session = await store.session().open();
+
+          try {
+            const entries = await session.fetchAll({
+              category,
+              tagFilter: options?.tagFilter,
+              limit: options?.limit,
+              isJson: true,
+            });
+
+            return mapEntries(entries);
+          } finally {
+            if (session.handle) {
+              await session.close();
+            }
+          }
+        },
+        async withSession<T>(callback: (session: AskarSession) => Promise<T>): Promise<T> {
+          const session = await store.session().open();
+
+          try {
+            const askarSession = new NodeJsAskarSession(session);
+            return await callback(askarSession);
+          } finally {
+            if (session.handle) {
+              await session.close();
+            }
+          }
+        },
         async withTransaction<T>(callback: (txn: AskarTransaction) => Promise<T>): Promise<T> {
           const session = await store.transaction().open();
-          const transaction = new NodeJsAskarTransaction(session);
-          return callback(transaction);
+
+          try {
+            const transaction = new NodeJsAskarTransaction(session);
+            return await callback(transaction);
+          } catch (error) {
+            if (session.handle) {
+              await session.rollback();
+            }
+
+            throw error;
+          } finally {
+            if (session.handle) {
+              await session.close();
+            }
+          }
         },
         async close(): Promise<void> {
           await store.close();
@@ -35,26 +83,9 @@ export function createAskarNodeJsStoreFactory(): AskarStoreFactory {
   };
 }
 
-class NodeJsAskarTransaction implements AskarTransaction {
+class NodeJsAskarSession implements AskarSession {
   public constructor(
-    private readonly session: {
-      fetchAll(options?: {
-        category?: string;
-        tagFilter?: Record<string, unknown>;
-        limit?: number;
-        forUpdate?: boolean;
-        isJson?: boolean;
-      }): Promise<EntryObject[]>;
-      remove(options: { category: string; name: string }): Promise<void>;
-      replace(options: {
-        category: string;
-        name: string;
-        value: Record<string, unknown>;
-        tags?: Record<string, unknown>;
-      }): Promise<void>;
-      commit(): Promise<void>;
-      rollback(): Promise<void>;
-    },
+    protected readonly session: Pick<Session, "fetchAll" | "remove" | "replace">,
   ) {}
 
   public async fetchAll(
@@ -68,11 +99,7 @@ class NodeJsAskarTransaction implements AskarTransaction {
       isJson: true,
     });
 
-    return entries.map((entry) => ({
-      name: entry.name,
-      valueJson: asRecord(entry.value),
-      tags: normalizeTags(entry.tags),
-    }));
+    return mapEntries(entries);
   }
 
   public async remove(category: string, name: string): Promise<void> {
@@ -92,14 +119,30 @@ class NodeJsAskarTransaction implements AskarTransaction {
       tags: options.tags ?? undefined,
     });
   }
+}
+
+class NodeJsAskarTransaction extends NodeJsAskarSession implements AskarTransaction {
+  public constructor(
+    private readonly transactionSession: Pick<Session, "fetchAll" | "remove" | "replace" | "commit" | "rollback">,
+  ) {
+    super(transactionSession);
+  }
 
   public async commit(): Promise<void> {
-    await this.session.commit();
+    await this.transactionSession.commit();
   }
 
   public async rollback(): Promise<void> {
-    await this.session.rollback();
+    await this.transactionSession.rollback();
   }
+}
+
+function mapEntries(entries: EntryObject[]): AskarRecord[] {
+  return entries.map((entry) => ({
+    name: entry.name,
+    valueJson: asRecord(entry.value),
+    tags: normalizeTags(entry.tags),
+  }));
 }
 
 export function toStoreKeyMethod(value?: string): StoreKeyMethod | undefined {

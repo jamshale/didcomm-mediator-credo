@@ -44,7 +44,26 @@ export interface AskarTransaction {
   rollback(): Promise<void>;
 }
 
+export interface AskarSession {
+  fetchAll(
+    category: string,
+    options?: { tagFilter?: Record<string, string>; limit?: number; },
+  ): Promise<AskarRecord[]>;
+  remove(category: string, name: string): Promise<void>;
+  replace(options: {
+    category: string;
+    name: string;
+    valueJson: Record<string, unknown>;
+    tags?: Record<string, string> | null;
+  }): Promise<void>;
+}
+
 export interface AskarStore {
+  fetchAll(
+    category: string,
+    options?: { tagFilter?: Record<string, string>; limit?: number; },
+  ): Promise<AskarRecord[]>;
+  withSession<T>(callback: (session: AskarSession) => Promise<T>): Promise<T>;
   withTransaction<T>(callback: (txn: AskarTransaction) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
@@ -167,11 +186,11 @@ export class CredoMediatorCleanUp {
         queuedResult.rows.map((row: { connection_id: unknown; }) => String(row.connection_id)),
       );
 
-      const connectionRecords = await store.withTransaction((txn) => txn.fetchAll("ConnectionRecord"));
+      const connectionRecords = await store.fetchAll("ConnectionRecord");
 
       let deleted = 0;
       for (const connectionRecord of connectionRecords) {
-        await store.withTransaction(async (txn) => {
+        await store.withSession(async (session) => {
           try {
             if (connectionsWithQueuedMessages.has(connectionRecord.name)) {
               this.logger.log(
@@ -184,7 +203,7 @@ export class CredoMediatorCleanUp {
 
             if (!activityTime) {
               const connectionValue = { ...connectionRecord.valueJson, updatedAt: formatUtcDatetime(now) };
-              await txn.replace({
+              await session.replace({
                 category: "ConnectionRecord",
                 name: connectionRecord.name,
                 valueJson: connectionValue,
@@ -193,7 +212,6 @@ export class CredoMediatorCleanUp {
               this.logger.log(
                 `Backfilled updatedAt for connection record with id ${connectionRecord.name} to ${String(connectionValue.updatedAt)}`,
               );
-              await txn.commit();
               return;
             }
 
@@ -202,42 +220,42 @@ export class CredoMediatorCleanUp {
               const theirDid = asString(connectionRecord.valueJson.theirDid);
               const did = asString(connectionRecord.valueJson.did);
 
-              await txn.remove("ConnectionRecord", connectionRecord.name);
+              await session.remove("ConnectionRecord", connectionRecord.name);
 
               if (theirDid) {
-                const theirDidRecord = await txn.fetchAll("DidRecord", {
+                const theirDidRecord = await session.fetchAll("DidRecord", {
                   tagFilter: { did: theirDid },
                   limit: 1,
                 });
                 if (theirDidRecord[0]) {
-                  await txn.remove("DidRecord", theirDidRecord[0].name);
+                  await session.remove("DidRecord", theirDidRecord[0].name);
                 }
               }
 
               if (did) {
-                const didRecord = await txn.fetchAll("DidRecord", {
+                const didRecord = await session.fetchAll("DidRecord", {
                   tagFilter: { did },
                   limit: 1,
                 });
                 if (didRecord[0]) {
-                  await txn.remove("DidRecord", didRecord[0].name);
+                  await session.remove("DidRecord", didRecord[0].name);
                 }
               }
 
-              const mediationRecord = await txn.fetchAll("MediationRecord", {
+              const mediationRecord = await session.fetchAll("MediationRecord", {
                 tagFilter: { connectionId: connectionRecord.name },
                 limit: 1,
               });
               if (mediationRecord[0]) {
-                await txn.remove("MediationRecord", mediationRecord[0].name);
+                await session.remove("MediationRecord", mediationRecord[0].name);
               }
 
-              const firebaseRecord = await txn.fetchAll("PushNotificationsFcmRecord", {
+              const firebaseRecord = await session.fetchAll("PushNotificationsFcmRecord", {
                 tagFilter: { connectionId: connectionRecord.name },
                 limit: 1,
               });
               if (firebaseRecord[0]) {
-                await txn.remove("PushNotificationsFcmRecord", firebaseRecord[0].name);
+                await session.remove("PushNotificationsFcmRecord", firebaseRecord[0].name);
               }
 
               deleted += 1;
@@ -245,13 +263,10 @@ export class CredoMediatorCleanUp {
                 `Deleted connection record with id ${connectionRecord.name} last active at ${activityTime.toISOString()} and associated records`,
               );
             }
-
-            await txn.commit();
           } catch (error) {
             this.logger.error(
               `Error processing connection record with id ${connectionRecord.name}: ${formatError(error)}`,
             );
-            await txn.rollback();
           }
         });
       }

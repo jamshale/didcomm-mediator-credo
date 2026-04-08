@@ -12,6 +12,8 @@ Current scope:
 
 For the most accurate cleanup behavior, mediation connection records should be tagged with a `lastSeen` timestamp. If `lastSeen` is not present, the cleanup process falls back to `updatedAt`, and then to `createdAt`.
 
+The current cleanup implementation is best-effort, not atomic per connection. It uses session-backed writes instead of a single rollback-capable transaction for each connection record. If a failure happens partway through removing related records, some changes may already have been applied and the next scheduled run is expected to finish any remaining cleanup.
+
 Scheduling is expected to be handled externally, for example with an OpenShift CronJob.
 
 The cleanup class can be used directly with the included OWF adapter:
