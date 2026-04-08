@@ -5,10 +5,10 @@ import {
   type AskarSession,
   type AskarStore,
   type AskarStoreFactory,
-  CredoMediatorCleanUp,
+  CredoMediatorPruner,
   formatUtcDatetime,
   getConnectionActivityTime,
-} from '../src/credoMediatorCleanUp.js'
+} from '../src/credoMediatorPruner.js'
 
 class FakeSession implements AskarSession {
   public readonly removed: Array<[string, string]> = []
@@ -143,7 +143,7 @@ describe('getConnectionActivityTime', () => {
   })
 })
 
-describe('CredoMediatorCleanUp', () => {
+describe('CredoMediatorPruner', () => {
   it('deletes stale connections and related records', async () => {
     const connectionRecord: AskarRecord = {
       name: 'conn-1',
@@ -171,7 +171,7 @@ describe('CredoMediatorCleanUp', () => {
     const walletConnect = vi.fn(async () => undefined)
     const walletClose = vi.fn(async () => undefined)
 
-    const cleanup = new CredoMediatorCleanUp({
+    const pruner = new CredoMediatorPruner({
       conn: { uri: 'sqlite:///wallet.db', connect: walletConnect, close: walletClose },
       pickupRepoConn: { connectionString: 'postgres://user:pass@localhost:5432/db' },
       walletKey: 'key',
@@ -181,7 +181,7 @@ describe('CredoMediatorCleanUp', () => {
       logger: { log: vi.fn(), error: vi.fn() },
     })
 
-    await cleanup.cleanup()
+    await pruner.prune()
 
     expect(cleanupSession.removed).toEqual([
       ['ConnectionRecord', 'conn-1'],
@@ -207,7 +207,7 @@ describe('CredoMediatorCleanUp', () => {
     const query = vi.fn(async () => ({ rows: [{ connection_id: 'conn-queued' }] }))
     const walletClose = vi.fn(async () => undefined)
 
-    const cleanup = new CredoMediatorCleanUp({
+    const pruner = new CredoMediatorPruner({
       conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: walletClose },
       pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
       walletKey: 'key',
@@ -216,7 +216,7 @@ describe('CredoMediatorCleanUp', () => {
       logger: { log: vi.fn(), error: vi.fn() },
     })
 
-    await cleanup.cleanup()
+    await pruner.prune()
 
     expect(cleanupSession.removed).toEqual([])
     expect(store.closed).toBe(true)
@@ -235,7 +235,7 @@ describe('CredoMediatorCleanUp', () => {
     vi.setSystemTime(now)
 
     try {
-      const cleanup = new CredoMediatorCleanUp({
+      const pruner = new CredoMediatorPruner({
         conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: walletClose },
         pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
         walletKey: 'key',
@@ -248,7 +248,7 @@ describe('CredoMediatorCleanUp', () => {
         logger: { log: vi.fn(), error: vi.fn() },
       })
 
-      await cleanup.cleanup()
+      await pruner.prune()
 
       expect(cleanupSession.removed).toEqual([])
       expect(cleanupSession.replaced).toEqual([

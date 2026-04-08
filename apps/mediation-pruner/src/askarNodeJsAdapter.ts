@@ -1,6 +1,6 @@
 import { type EntryObject, KdfMethod, type Session, Store, StoreKeyMethod } from '@openwallet-foundation/askar-nodejs'
 
-import type { AskarRecord, AskarSession, AskarStore, AskarStoreFactory } from './credoMediatorCleanUp.js'
+import type { AskarRecord, AskarSession, AskarStore, AskarStoreFactory } from './credoMediatorPruner.js'
 
 export function createAskarNodeJsStoreFactory(): AskarStoreFactory {
   return {

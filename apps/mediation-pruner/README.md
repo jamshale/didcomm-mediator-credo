@@ -16,20 +16,20 @@ The current cleanup implementation is best-effort, not atomic per connection. It
 
 Scheduling is expected to be handled externally, for example with an OpenShift CronJob.
 
-The cleanup class can be used directly with the included OWF adapter:
+The pruner class can be used directly with the included OWF adapter:
 
 ```ts
-import { CredoMediatorCleanUp, createAskarNodeJsStoreFactory } from "./src/index.js";
+import { CredoMediatorPruner, createAskarNodeJsStoreFactory } from './src/index.js'
 
-const cleanup = new CredoMediatorCleanUp({
-	conn,
-	pickupRepoConn,
-	walletKey: "secret",
-	walletKeyDerivationMethod: "ARGON2I_MOD",
-	storeFactory: createAskarNodeJsStoreFactory(),
-});
+const pruner = new CredoMediatorPruner({
+  conn,
+  pickupRepoConn,
+  walletKey: 'secret',
+  walletKeyDerivationMethod: 'ARGON2I_MOD',
+  storeFactory: createAskarNodeJsStoreFactory(),
+})
 
-await cleanup.cleanup();
+await pruner.prune()
 ```
 
 The package can also run as a process using environment variables:

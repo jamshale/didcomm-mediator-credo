@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildCredoMediatorCleanUpOptionsFromEnv, parsePickupRepositoryUrl } from '../src/main.js'
+import { buildCredoMediatorPrunerOptionsFromEnv, parsePickupRepositoryUrl } from '../src/main.js'
 
-describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
-  it('builds cleanup options from environment variables', () => {
-    const options = buildCredoMediatorCleanUpOptionsFromEnv({
+describe('buildCredoMediatorPrunerOptionsFromEnv', () => {
+  it('builds pruner options from environment variables', () => {
+    const options = buildCredoMediatorPrunerOptionsFromEnv({
       WALLET_URI: 'sqlite:///wallet.db',
       PICKUP_REPOSITORY_URL: 'postgres://user:pass@localhost:5432/db',
       WALLET_KEY: 'secret',
@@ -20,7 +20,7 @@ describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
   })
 
   it('accepts DATABASE_URL as an alias for PICKUP_REPOSITORY_URL', () => {
-    const options = buildCredoMediatorCleanUpOptionsFromEnv({
+    const options = buildCredoMediatorPrunerOptionsFromEnv({
       WALLET_URI: 'sqlite:///wallet.db',
       DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
       WALLET_KEY: 'secret',
@@ -30,12 +30,12 @@ describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
   })
 
   it('throws when required environment variables are missing', () => {
-    expect(() => buildCredoMediatorCleanUpOptionsFromEnv({})).toThrow(/Missing required environment variable/)
+    expect(() => buildCredoMediatorPrunerOptionsFromEnv({})).toThrow(/Missing required environment variable/)
   })
 
   it('throws when INACTIVE_DAYS_THRESHOLD is not numeric', () => {
     expect(() =>
-      buildCredoMediatorCleanUpOptionsFromEnv({
+      buildCredoMediatorPrunerOptionsFromEnv({
         WALLET_URI: 'sqlite:///wallet.db',
         PICKUP_REPOSITORY_URL: 'postgres://user:pass@localhost:5432/db',
         WALLET_KEY: 'secret',

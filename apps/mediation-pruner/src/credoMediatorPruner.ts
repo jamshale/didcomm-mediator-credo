@@ -52,7 +52,7 @@ export interface Logger {
   error(message: string): void
 }
 
-export interface CredoMediatorCleanUpOptions {
+export interface CredoMediatorPrunerOptions {
   conn: WalletConnection
   pickupRepoConn: PickupRepositoryConnection
   walletKey: string
@@ -106,17 +106,17 @@ export function getConnectionActivityTime(
   return null
 }
 
-export class CredoMediatorCleanUp {
+export class CredoMediatorPruner {
   private readonly conn: WalletConnection
   private readonly pickupRepoConn: PickupRepositoryConnection
   private readonly walletKey: string
   private readonly walletKeyDerivationMethod: string
   private readonly inactiveDaysThreshold: number
   private readonly storeFactory: AskarStoreFactory
-  private readonly pgClientFactory: NonNullable<CredoMediatorCleanUpOptions['pgClientFactory']>
+  private readonly pgClientFactory: NonNullable<CredoMediatorPrunerOptions['pgClientFactory']>
   private readonly logger: Logger
 
-  public constructor(options: CredoMediatorCleanUpOptions) {
+  public constructor(options: CredoMediatorPrunerOptions) {
     this.conn = options.conn
     this.pickupRepoConn = options.pickupRepoConn
     this.walletKey = options.walletKey
@@ -127,8 +127,8 @@ export class CredoMediatorCleanUp {
     this.logger = options.logger ?? defaultLogger
   }
 
-  public async cleanup(): Promise<void> {
-    this.logger.log('Cleaning up wallet...')
+  public async prune(): Promise<void> {
+    this.logger.log('Pruning mediator wallet...')
 
     const now = new Date()
     const store = await this.storeFactory.open({
@@ -233,7 +233,7 @@ export class CredoMediatorCleanUp {
         })
       }
 
-      this.logger.log(`Cleanup complete. Deleted ${deleted} connection and related records.`)
+      this.logger.log(`Pruning complete. Deleted ${deleted} connection and related records.`)
     } finally {
       await store.close()
       await this.conn.close()

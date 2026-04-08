@@ -2,15 +2,15 @@ import { fileURLToPath } from 'node:url'
 
 import { createAskarNodeJsStoreFactory } from './askarNodeJsAdapter.js'
 import {
-  CredoMediatorCleanUp,
-  type CredoMediatorCleanUpOptions,
+  CredoMediatorPruner,
+  type CredoMediatorPrunerOptions,
   type PickupRepositoryConnection,
   type WalletConnection,
-} from './credoMediatorCleanUp.js'
+} from './credoMediatorPruner.js'
 
-export function buildCredoMediatorCleanUpOptionsFromEnv(
+export function buildCredoMediatorPrunerOptionsFromEnv(
   env: NodeJS.ProcessEnv = process.env
-): CredoMediatorCleanUpOptions {
+): CredoMediatorPrunerOptions {
   const walletUri = requireEnv(env, 'WALLET_URI')
   const pickupRepositoryUrl = requireAnyEnv(env, ['PICKUP_REPOSITORY_URL', 'DATABASE_URL', 'POSTGRES_URL'])
 
@@ -23,13 +23,13 @@ export function buildCredoMediatorCleanUpOptionsFromEnv(
   }
 }
 
-export async function runCleanupFromEnv(env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const cleanup = new CredoMediatorCleanUp({
-    ...buildCredoMediatorCleanUpOptionsFromEnv(env),
+export async function runCredoMediatorPrunerFromEnv(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const pruner = new CredoMediatorPruner({
+    ...buildCredoMediatorPrunerOptionsFromEnv(env),
     storeFactory: createAskarNodeJsStoreFactory(),
   })
 
-  await cleanup.cleanup()
+  await pruner.prune()
 }
 
 export function parsePickupRepositoryUrl(value: string): PickupRepositoryConnection {
@@ -93,7 +93,7 @@ function parseOptionalNumber(value: string | undefined, name: string): number | 
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await runCleanupFromEnv().catch((error: unknown) => {
+  await runCredoMediatorPrunerFromEnv().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error)
     console.error(message)
     process.exitCode = 1
