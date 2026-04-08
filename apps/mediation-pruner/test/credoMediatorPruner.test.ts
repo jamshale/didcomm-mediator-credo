@@ -18,6 +18,10 @@ class FakeSession implements AskarSession {
     valueJson: Record<string, unknown>
     tags?: Record<string, string> | null
   }> = []
+  public readonly fetchCalls: Array<{
+    category: string
+    options?: { tagFilter?: Record<string, string>; limit?: number }
+  }> = []
 
   public constructor(
     private readonly recordLookup: Record<string, AskarRecord[]> = {},
@@ -28,6 +32,8 @@ class FakeSession implements AskarSession {
     category: string,
     options?: { tagFilter?: Record<string, string>; limit?: number }
   ): Promise<AskarRecord[]> {
+    this.fetchCalls.push({ category, options })
+
     if (category === 'ConnectionRecord' && !options?.tagFilter) {
       return this.connectionRecords
     }
@@ -195,7 +201,7 @@ describe('CredoMediatorPruner', () => {
     expect(end).toHaveBeenCalledOnce()
   })
 
-  it('skips queued connections', async () => {
+  it('does not prune stale connections that still have queued messages in the pickup repository', async () => {
     const connectionRecord: AskarRecord = {
       name: 'conn-queued',
       valueJson: { updatedAt: '2000-01-01T00:00:00Z' },
@@ -219,6 +225,8 @@ describe('CredoMediatorPruner', () => {
     await pruner.prune()
 
     expect(cleanupSession.removed).toEqual([])
+    expect(cleanupSession.replaced).toEqual([])
+    expect(cleanupSession.fetchCalls).toEqual([])
     expect(store.closed).toBe(true)
     expect(walletClose).toHaveBeenCalledOnce()
   })
