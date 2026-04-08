@@ -5,13 +5,12 @@ import {
   type AskarSession,
   type AskarStore,
   type AskarStoreFactory,
-  type AskarTransaction,
   CredoMediatorCleanUp,
   formatUtcDatetime,
   getConnectionActivityTime,
 } from '../src/credoMediatorCleanUp.js'
 
-class FakeTxn implements AskarTransaction {
+class FakeSession implements AskarSession {
   public readonly removed: Array<[string, string]> = []
   public readonly replaced: Array<{
     category: string
@@ -19,8 +18,6 @@ class FakeTxn implements AskarTransaction {
     valueJson: Record<string, unknown>
     tags?: Record<string, string> | null
   }> = []
-  public committed = false
-  public rolledBack = false
 
   public constructor(
     private readonly recordLookup: Record<string, AskarRecord[]> = {},
@@ -51,49 +48,32 @@ class FakeTxn implements AskarTransaction {
   }): Promise<void> {
     this.replaced.push(options)
   }
-
-  public async commit(): Promise<void> {
-    this.committed = true
-  }
-
-  public async rollback(): Promise<void> {
-    this.rolledBack = true
-  }
 }
 
 class FakeStore implements AskarStore {
   public closed = false
 
-  public constructor(private readonly transactions: AskarTransaction[]) {}
+  public constructor(private readonly sessions: AskarSession[]) {}
 
   public async fetchAll(
     category: string,
     options?: { tagFilter?: Record<string, string>; limit?: number }
   ): Promise<AskarRecord[]> {
-    const txn = this.transactions.shift()
-    if (!txn) {
-      throw new Error('No transaction available')
+    const session = this.sessions.shift()
+    if (!session) {
+      throw new Error('No session available')
     }
 
-    return txn.fetchAll(category, options)
+    return session.fetchAll(category, options)
   }
 
   public async withSession<T>(callback: (session: AskarSession) => Promise<T>): Promise<T> {
-    const txn = this.transactions.shift()
-    if (!txn) {
-      throw new Error('No transaction available')
+    const session = this.sessions.shift()
+    if (!session) {
+      throw new Error('No session available')
     }
 
-    return callback(txn)
-  }
-
-  public async withTransaction<T>(callback: (txn: AskarTransaction) => Promise<T>): Promise<T> {
-    const txn = this.transactions.shift()
-    if (!txn) {
-      throw new Error('No transaction available')
-    }
-
-    return callback(txn)
+    return callback(session)
   }
 
   public async close(): Promise<void> {
@@ -174,7 +154,7 @@ describe('CredoMediatorCleanUp', () => {
       },
       tags: {},
     }
-    const txn = new FakeTxn(
+    const cleanupSession = new FakeSession(
       {
         [lookupKey('DidRecord', { did: 'their-did' })]: [{ name: 'did-2', valueJson: {} }],
         [lookupKey('DidRecord', { did: 'my-did' })]: [{ name: 'did-1', valueJson: {} }],
@@ -183,8 +163,8 @@ describe('CredoMediatorCleanUp', () => {
       },
       []
     )
-    const session = new FakeTxn({}, [connectionRecord])
-    const store = new FakeStore([session, txn])
+    const connectionLookupSession = new FakeSession({}, [connectionRecord])
+    const store = new FakeStore([connectionLookupSession, cleanupSession])
     const connect = vi.fn(async () => undefined)
     const end = vi.fn(async () => undefined)
     const query = vi.fn(async () => ({ rows: [] }))
@@ -203,14 +183,13 @@ describe('CredoMediatorCleanUp', () => {
 
     await cleanup.cleanup()
 
-    expect(txn.removed).toEqual([
+    expect(cleanupSession.removed).toEqual([
       ['ConnectionRecord', 'conn-1'],
       ['DidRecord', 'did-2'],
       ['DidRecord', 'did-1'],
       ['MediationRecord', 'mediation-1'],
       ['PushNotificationsFcmRecord', 'firebase-1'],
     ])
-    expect(txn.committed).toBe(false)
     expect(store.closed).toBe(true)
     expect(walletClose).toHaveBeenCalledOnce()
     expect(end).toHaveBeenCalledOnce()
@@ -222,9 +201,9 @@ describe('CredoMediatorCleanUp', () => {
       valueJson: { updatedAt: '2000-01-01T00:00:00Z' },
       tags: {},
     }
-    const txn = new FakeTxn()
-    const session = new FakeTxn({}, [connectionRecord])
-    const store = new FakeStore([session, txn])
+    const cleanupSession = new FakeSession()
+    const connectionLookupSession = new FakeSession({}, [connectionRecord])
+    const store = new FakeStore([connectionLookupSession, cleanupSession])
     const query = vi.fn(async () => ({ rows: [{ connection_id: 'conn-queued' }] }))
     const walletClose = vi.fn(async () => undefined)
 
@@ -239,18 +218,16 @@ describe('CredoMediatorCleanUp', () => {
 
     await cleanup.cleanup()
 
-    expect(txn.removed).toEqual([])
-    expect(txn.committed).toBe(false)
-    expect(txn.rolledBack).toBe(false)
+    expect(cleanupSession.removed).toEqual([])
     expect(store.closed).toBe(true)
     expect(walletClose).toHaveBeenCalledOnce()
   })
 
   it('backfills updatedAt when timestamps are missing', async () => {
     const connectionRecord: AskarRecord = { name: 'conn-1', valueJson: {}, tags: {} }
-    const txn = new FakeTxn()
-    const session = new FakeTxn({}, [connectionRecord])
-    const store = new FakeStore([session, txn])
+    const cleanupSession = new FakeSession()
+    const connectionLookupSession = new FakeSession({}, [connectionRecord])
+    const store = new FakeStore([connectionLookupSession, cleanupSession])
     const now = new Date('2026-04-06T12:00:00Z')
     const walletClose = vi.fn(async () => undefined)
 
@@ -273,8 +250,8 @@ describe('CredoMediatorCleanUp', () => {
 
       await cleanup.cleanup()
 
-      expect(txn.removed).toEqual([])
-      expect(txn.replaced).toEqual([
+      expect(cleanupSession.removed).toEqual([])
+      expect(cleanupSession.replaced).toEqual([
         {
           category: 'ConnectionRecord',
           name: 'conn-1',
@@ -282,7 +259,6 @@ describe('CredoMediatorCleanUp', () => {
           tags: {},
         },
       ])
-      expect(txn.committed).toBe(false)
       expect(store.closed).toBe(true)
       expect(walletClose).toHaveBeenCalledOnce()
     } finally {

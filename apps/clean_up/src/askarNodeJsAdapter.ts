@@ -1,12 +1,6 @@
 import { type EntryObject, KdfMethod, type Session, Store, StoreKeyMethod } from '@openwallet-foundation/askar-nodejs'
 
-import type {
-  AskarRecord,
-  AskarSession,
-  AskarStore,
-  AskarStoreFactory,
-  AskarTransaction,
-} from './credoMediatorCleanUp.js'
+import type { AskarRecord, AskarSession, AskarStore, AskarStoreFactory } from './credoMediatorCleanUp.js'
 
 export function createAskarNodeJsStoreFactory(): AskarStoreFactory {
   return {
@@ -45,24 +39,6 @@ export function createAskarNodeJsStoreFactory(): AskarStoreFactory {
           try {
             const askarSession = new NodeJsAskarSession(session)
             return await callback(askarSession)
-          } finally {
-            if (session.handle) {
-              await session.close()
-            }
-          }
-        },
-        async withTransaction<T>(callback: (txn: AskarTransaction) => Promise<T>): Promise<T> {
-          const session = await store.transaction().open()
-
-          try {
-            const transaction = new NodeJsAskarTransaction(session)
-            return await callback(transaction)
-          } catch (error) {
-            if (session.handle) {
-              await session.rollback()
-            }
-
-            throw error
           } finally {
             if (session.handle) {
               await session.close()
@@ -110,22 +86,6 @@ class NodeJsAskarSession implements AskarSession {
       value: options.valueJson,
       tags: options.tags ?? undefined,
     })
-  }
-}
-
-class NodeJsAskarTransaction extends NodeJsAskarSession implements AskarTransaction {
-  public constructor(
-    private readonly transactionSession: Pick<Session, 'fetchAll' | 'remove' | 'replace' | 'commit' | 'rollback'>
-  ) {
-    super(transactionSession)
-  }
-
-  public async commit(): Promise<void> {
-    await this.transactionSession.commit()
-  }
-
-  public async rollback(): Promise<void> {
-    await this.transactionSession.rollback()
   }
 }
 

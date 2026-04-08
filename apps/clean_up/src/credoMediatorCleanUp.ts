@@ -22,19 +22,6 @@ export interface AskarRecord {
   tags?: Record<string, string> | null
 }
 
-export interface AskarTransaction {
-  fetchAll(category: string, options?: { tagFilter?: Record<string, string>; limit?: number }): Promise<AskarRecord[]>
-  remove(category: string, name: string): Promise<void>
-  replace(options: {
-    category: string
-    name: string
-    valueJson: Record<string, unknown>
-    tags?: Record<string, string> | null
-  }): Promise<void>
-  commit(): Promise<void>
-  rollback(): Promise<void>
-}
-
 export interface AskarSession {
   fetchAll(category: string, options?: { tagFilter?: Record<string, string>; limit?: number }): Promise<AskarRecord[]>
   remove(category: string, name: string): Promise<void>
@@ -49,7 +36,6 @@ export interface AskarSession {
 export interface AskarStore {
   fetchAll(category: string, options?: { tagFilter?: Record<string, string>; limit?: number }): Promise<AskarRecord[]>
   withSession<T>(callback: (session: AskarSession) => Promise<T>): Promise<T>
-  withTransaction<T>(callback: (txn: AskarTransaction) => Promise<T>): Promise<T>
   close(): Promise<void>
 }
 
