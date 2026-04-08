@@ -1,77 +1,72 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest'
 
-import {
-  buildCredoMediatorCleanUpOptionsFromEnv,
-  parsePickupRepositoryUrl,
-} from "../src/main.js";
+import { buildCredoMediatorCleanUpOptionsFromEnv, parsePickupRepositoryUrl } from '../src/main.js'
 
-describe("buildCredoMediatorCleanUpOptionsFromEnv", () => {
-  it("builds cleanup options from environment variables", () => {
+describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
+  it('builds cleanup options from environment variables', () => {
     const options = buildCredoMediatorCleanUpOptionsFromEnv({
-      WALLET_URI: "sqlite:///wallet.db",
-      PICKUP_REPOSITORY_URL: "postgres://user:pass@localhost:5432/db",
-      WALLET_NAME: "wallet",
-      WALLET_KEY: "secret",
-      WALLET_KEY_DERIVATION_METHOD: "ARGON2I_MOD",
-      INACTIVE_DAYS_THRESHOLD: "14",
-    });
+      WALLET_URI: 'sqlite:///wallet.db',
+      PICKUP_REPOSITORY_URL: 'postgres://user:pass@localhost:5432/db',
+      WALLET_NAME: 'wallet',
+      WALLET_KEY: 'secret',
+      WALLET_KEY_DERIVATION_METHOD: 'ARGON2I_MOD',
+      INACTIVE_DAYS_THRESHOLD: '14',
+    })
 
-    expect(options.walletName).toBe("wallet");
-    expect(options.walletKey).toBe("secret");
-    expect(options.walletKeyDerivationMethod).toBe("ARGON2I_MOD");
-    expect(options.inactiveDaysThreshold).toBe(14);
-    expect(options.conn.uri).toBe("sqlite:///wallet.db");
-    expect(options.pickupRepoConn.connectionString).toBe("postgres://user:pass@localhost:5432/db");
-  });
+    expect(options.walletName).toBe('wallet')
+    expect(options.walletKey).toBe('secret')
+    expect(options.walletKeyDerivationMethod).toBe('ARGON2I_MOD')
+    expect(options.inactiveDaysThreshold).toBe(14)
+    expect(options.conn.uri).toBe('sqlite:///wallet.db')
+    expect(options.pickupRepoConn.connectionString).toBe('postgres://user:pass@localhost:5432/db')
+  })
 
-  it("accepts DATABASE_URL as an alias for PICKUP_REPOSITORY_URL", () => {
+  it('accepts DATABASE_URL as an alias for PICKUP_REPOSITORY_URL', () => {
     const options = buildCredoMediatorCleanUpOptionsFromEnv({
-      WALLET_URI: "sqlite:///wallet.db",
-      DATABASE_URL: "postgres://user:pass@localhost:5432/db",
-      WALLET_NAME: "wallet",
-      WALLET_KEY: "secret",
-    });
+      WALLET_URI: 'sqlite:///wallet.db',
+      DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
+      WALLET_NAME: 'wallet',
+      WALLET_KEY: 'secret',
+    })
 
-    expect(options.pickupRepoConn.connectionString).toBe("postgres://user:pass@localhost:5432/db");
-  });
+    expect(options.pickupRepoConn.connectionString).toBe('postgres://user:pass@localhost:5432/db')
+  })
 
-  it("throws when required environment variables are missing", () => {
-    expect(() => buildCredoMediatorCleanUpOptionsFromEnv({})).toThrow(
-      /Missing required environment variable/,
-    );
-  });
+  it('throws when required environment variables are missing', () => {
+    expect(() => buildCredoMediatorCleanUpOptionsFromEnv({})).toThrow(/Missing required environment variable/)
+  })
 
-  it("throws when INACTIVE_DAYS_THRESHOLD is not numeric", () => {
+  it('throws when INACTIVE_DAYS_THRESHOLD is not numeric', () => {
     expect(() =>
       buildCredoMediatorCleanUpOptionsFromEnv({
-        WALLET_URI: "sqlite:///wallet.db",
-        PICKUP_REPOSITORY_URL: "postgres://user:pass@localhost:5432/db",
-        WALLET_NAME: "wallet",
-        WALLET_KEY: "secret",
-        INACTIVE_DAYS_THRESHOLD: "abc",
-      }),
-    ).toThrow(/INACTIVE_DAYS_THRESHOLD/);
-  });
-});
+        WALLET_URI: 'sqlite:///wallet.db',
+        PICKUP_REPOSITORY_URL: 'postgres://user:pass@localhost:5432/db',
+        WALLET_NAME: 'wallet',
+        WALLET_KEY: 'secret',
+        INACTIVE_DAYS_THRESHOLD: 'abc',
+      })
+    ).toThrow(/INACTIVE_DAYS_THRESHOLD/)
+  })
+})
 
-describe("parsePickupRepositoryUrl", () => {
-  it("throws for an invalid URL", () => {
-    expect(() => parsePickupRepositoryUrl("not-a-url")).toThrow(/valid postgres connection URL/);
-  });
+describe('parsePickupRepositoryUrl', () => {
+  it('throws for an invalid URL', () => {
+    expect(() => parsePickupRepositoryUrl('not-a-url')).toThrow(/valid postgres connection URL/)
+  })
 
-  it("throws for a non-postgres protocol", () => {
-    expect(() => parsePickupRepositoryUrl("mysql://user:pass@localhost:3306/db")).toThrow(
-      /postgres: or postgresql: protocol/,
-    );
-  });
+  it('throws for a non-postgres protocol', () => {
+    expect(() => parsePickupRepositoryUrl('mysql://user:pass@localhost:3306/db')).toThrow(
+      /postgres: or postgresql: protocol/
+    )
+  })
 
-  it("preserves query-string options in the connection string", () => {
+  it('preserves query-string options in the connection string', () => {
     const connection = parsePickupRepositoryUrl(
-      "postgres://user:pass@localhost:5432/db?sslmode=require&application_name=cleanup",
-    );
+      'postgres://user:pass@localhost:5432/db?sslmode=require&application_name=cleanup'
+    )
 
     expect(connection.connectionString).toBe(
-      "postgres://user:pass@localhost:5432/db?sslmode=require&application_name=cleanup",
-    );
-  });
-});
+      'postgres://user:pass@localhost:5432/db?sslmode=require&application_name=cleanup'
+    )
+  })
+})
