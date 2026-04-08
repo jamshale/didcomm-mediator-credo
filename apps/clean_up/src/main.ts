@@ -42,14 +42,12 @@ export function parsePickupRepositoryUrl(value: string): PickupRepositoryConnect
     throw new Error("PICKUP_REPOSITORY_URL must be a valid postgres connection URL");
   }
 
+  if (parsedUrl.protocol !== "postgres:" && parsedUrl.protocol !== "postgresql:") {
+    throw new Error("PICKUP_REPOSITORY_URL must use the postgres: or postgresql: protocol");
+  }
+
   return {
-    parsedUrl: {
-      hostname: parsedUrl.hostname || undefined,
-      port: parsedUrl.port ? Number(parsedUrl.port) : undefined,
-      username: parsedUrl.username ? decodeURIComponent(parsedUrl.username) : undefined,
-      password: parsedUrl.password ? decodeURIComponent(parsedUrl.password) : undefined,
-      path: parsedUrl.pathname,
-    },
+    connectionString: value,
   };
 }
 

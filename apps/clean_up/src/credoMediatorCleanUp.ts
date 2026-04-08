@@ -13,13 +13,7 @@ export interface WalletConnection {
 }
 
 export interface PickupRepositoryConnection {
-  parsedUrl: {
-    hostname?: string | null;
-    port?: number | null;
-    username?: string | null;
-    password?: string | null;
-    path: string;
-  };
+  connectionString: string;
 }
 
 export interface AskarRecord {
@@ -169,13 +163,7 @@ export class CredoMediatorCleanUp {
       keyMethod: this.walletKeyDerivationMethod,
     });
 
-    const dbConn = this.pgClientFactory({
-      host: this.pickupRepoConn.parsedUrl.hostname ?? undefined,
-      port: this.pickupRepoConn.parsedUrl.port ?? 5432,
-      user: this.pickupRepoConn.parsedUrl.username ?? undefined,
-      password: this.pickupRepoConn.parsedUrl.password ?? undefined,
-      database: this.pickupRepoConn.parsedUrl.path.replace(/^\//, ""),
-    });
+    const dbConn = this.pgClientFactory({ connectionString: this.pickupRepoConn.connectionString });
 
     try {
       await dbConn.connect();

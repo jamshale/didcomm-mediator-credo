@@ -197,15 +197,7 @@ describe("CredoMediatorCleanUp", () => {
 
     const cleanup = new CredoMediatorCleanUp({
       conn: { uri: "sqlite:///wallet.db", connect: walletConnect, close: walletClose },
-      pickupRepoConn: {
-        parsedUrl: {
-          hostname: "localhost",
-          port: 5432,
-          username: "user",
-          password: "pass",
-          path: "/db",
-        },
-      },
+      pickupRepoConn: { connectionString: "postgres://user:pass@localhost:5432/db" },
       walletName: "wallet",
       walletKey: "key",
       inactiveDaysThreshold: 365,
@@ -243,7 +235,7 @@ describe("CredoMediatorCleanUp", () => {
 
     const cleanup = new CredoMediatorCleanUp({
       conn: { uri: "sqlite:///wallet.db", connect: vi.fn(async () => undefined), close: walletClose },
-      pickupRepoConn: { parsedUrl: { path: "/db" } },
+      pickupRepoConn: { connectionString: "postgres://localhost:5432/db" },
       walletName: "wallet",
       walletKey: "key",
       storeFactory: new FakeStoreFactory(store),
@@ -274,7 +266,7 @@ describe("CredoMediatorCleanUp", () => {
     try {
       const cleanup = new CredoMediatorCleanUp({
         conn: { uri: "sqlite:///wallet.db", connect: vi.fn(async () => undefined), close: walletClose },
-        pickupRepoConn: { parsedUrl: { path: "/db" } },
+        pickupRepoConn: { connectionString: "postgres://localhost:5432/db" },
         walletName: "wallet",
         walletKey: "key",
         storeFactory: new FakeStoreFactory(store),
