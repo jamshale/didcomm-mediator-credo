@@ -56,6 +56,20 @@ class FakeSession implements AskarSession {
   }
 }
 
+class FailingRemoveSession extends FakeSession {
+  public constructor(private readonly failingRecordName: string) {
+    super()
+  }
+
+  public override async remove(category: string, name: string): Promise<void> {
+    if (category === 'ConnectionRecord' && name === this.failingRecordName) {
+      throw new Error(`Cannot remove ${name}`)
+    }
+
+    await super.remove(category, name)
+  }
+}
+
 class FakeStore implements AskarStore {
   public closed = false
 
@@ -272,6 +286,220 @@ describe('CredoMediatorPruner', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('does not prune connections that are not yet inactive', async () => {
+    const now = new Date('2026-04-08T12:00:00Z')
+    const connectionRecord: AskarRecord = {
+      name: 'conn-active',
+      valueJson: { updatedAt: '2026-04-01T00:00:00Z' },
+      tags: {},
+    }
+    const activeSession = new FakeSession()
+    const connectionLookupSession = new FakeSession({}, [connectionRecord])
+    const store = new FakeStore([connectionLookupSession, activeSession])
+    const walletClose = vi.fn(async () => undefined)
+
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    try {
+      const pruner = new CredoMediatorPruner({
+        conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: walletClose },
+        pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
+        walletKey: 'key',
+        inactiveDaysThreshold: 30,
+        storeFactory: new FakeStoreFactory(store),
+        pgClientFactory: () => ({
+          connect: vi.fn(async () => undefined),
+          query: vi.fn(async () => ({ rows: [] })),
+          end: vi.fn(async () => undefined),
+        }),
+        logger: { log: vi.fn(), error: vi.fn() },
+      })
+
+      await pruner.prune()
+
+      expect(activeSession.removed).toEqual([])
+      expect(activeSession.replaced).toEqual([])
+      expect(activeSession.fetchCalls).toEqual([])
+      expect(store.closed).toBe(true)
+      expect(walletClose).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('uses lastSeen tags to keep a connection when updatedAt is stale', async () => {
+    const now = new Date('2026-04-08T12:00:00Z')
+    const connectionRecord: AskarRecord = {
+      name: 'conn-last-seen',
+      valueJson: { updatedAt: '2000-01-01T00:00:00Z' },
+      tags: { lastSeen: '2026-04-07T00:00:00Z' },
+    }
+    const activeSession = new FakeSession()
+    const connectionLookupSession = new FakeSession({}, [connectionRecord])
+    const store = new FakeStore([connectionLookupSession, activeSession])
+
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    try {
+      const pruner = new CredoMediatorPruner({
+        conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: vi.fn(async () => undefined) },
+        pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
+        walletKey: 'key',
+        inactiveDaysThreshold: 30,
+        storeFactory: new FakeStoreFactory(store),
+        pgClientFactory: () => ({
+          connect: vi.fn(async () => undefined),
+          query: vi.fn(async () => ({ rows: [] })),
+          end: vi.fn(async () => undefined),
+        }),
+        logger: { log: vi.fn(), error: vi.fn() },
+      })
+
+      await pruner.prune()
+
+      expect(activeSession.removed).toEqual([])
+      expect(activeSession.replaced).toEqual([])
+      expect(activeSession.fetchCalls).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('deletes the connection even when related records are absent', async () => {
+    const connectionRecord: AskarRecord = {
+      name: 'conn-no-related',
+      valueJson: {
+        theirDid: 'their-did',
+        did: 'my-did',
+        updatedAt: '2000-01-01T00:00:00Z',
+      },
+      tags: {},
+    }
+    const cleanupSession = new FakeSession({}, [])
+    const connectionLookupSession = new FakeSession({}, [connectionRecord])
+    const store = new FakeStore([connectionLookupSession, cleanupSession])
+
+    const pruner = new CredoMediatorPruner({
+      conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: vi.fn(async () => undefined) },
+      pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
+      walletKey: 'key',
+      inactiveDaysThreshold: 30,
+      storeFactory: new FakeStoreFactory(store),
+      pgClientFactory: () => ({
+        connect: vi.fn(async () => undefined),
+        query: vi.fn(async () => ({ rows: [] })),
+        end: vi.fn(async () => undefined),
+      }),
+      logger: { log: vi.fn(), error: vi.fn() },
+    })
+
+    await pruner.prune()
+
+    expect(cleanupSession.removed).toEqual([['ConnectionRecord', 'conn-no-related']])
+    expect(cleanupSession.fetchCalls).toEqual([
+      { category: 'DidRecord', options: { tagFilter: { did: 'their-did' }, limit: 1 } },
+      { category: 'DidRecord', options: { tagFilter: { did: 'my-did' }, limit: 1 } },
+      { category: 'MediationRecord', options: { tagFilter: { connectionId: 'conn-no-related' }, limit: 1 } },
+      { category: 'PushNotificationsFcmRecord', options: { tagFilter: { connectionId: 'conn-no-related' }, limit: 1 } },
+    ])
+  })
+
+  it('logs a per-connection error and continues processing later records', async () => {
+    const connectionRecords: AskarRecord[] = [
+      {
+        name: 'conn-fail',
+        valueJson: { updatedAt: '2000-01-01T00:00:00Z' },
+        tags: {},
+      },
+      {
+        name: 'conn-ok',
+        valueJson: { updatedAt: '2000-01-01T00:00:00Z', theirDid: 'their-did' },
+        tags: {},
+      },
+    ]
+    const failingSession = new FailingRemoveSession('conn-fail')
+    const successSession = new FakeSession({
+      [lookupKey('DidRecord', { did: 'their-did' })]: [{ name: 'did-2', valueJson: {} }],
+    })
+    const connectionLookupSession = new FakeSession({}, connectionRecords)
+    const store = new FakeStore([connectionLookupSession, failingSession, successSession])
+    const logger = { log: vi.fn(), error: vi.fn() }
+
+    const pruner = new CredoMediatorPruner({
+      conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: vi.fn(async () => undefined) },
+      pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
+      walletKey: 'key',
+      inactiveDaysThreshold: 30,
+      storeFactory: new FakeStoreFactory(store),
+      pgClientFactory: () => ({
+        connect: vi.fn(async () => undefined),
+        query: vi.fn(async () => ({ rows: [] })),
+        end: vi.fn(async () => undefined),
+      }),
+      logger,
+    })
+
+    await pruner.prune()
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Error processing connection record with id conn-fail: Cannot remove conn-fail'
+    )
+    expect(successSession.removed).toEqual([
+      ['ConnectionRecord', 'conn-ok'],
+      ['DidRecord', 'did-2'],
+    ])
+    expect(logger.log).toHaveBeenCalledWith(
+      'Deleted connection record with id conn-ok last active at 2000-01-01T00:00:00.000Z and associated records'
+    )
+  })
+
+  it('logs an invalid timestamp error and continues processing later records', async () => {
+    const connectionRecords: AskarRecord[] = [
+      {
+        name: 'conn-invalid-time',
+        valueJson: { updatedAt: 'not-a-date' },
+        tags: {},
+      },
+      {
+        name: 'conn-ok',
+        valueJson: { updatedAt: '2000-01-01T00:00:00Z' },
+        tags: {},
+      },
+    ]
+    const invalidTimestampSession = new FakeSession()
+    const successSession = new FakeSession()
+    const connectionLookupSession = new FakeSession({}, connectionRecords)
+    const store = new FakeStore([connectionLookupSession, invalidTimestampSession, successSession])
+    const logger = { log: vi.fn(), error: vi.fn() }
+
+    const pruner = new CredoMediatorPruner({
+      conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: vi.fn(async () => undefined) },
+      pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
+      walletKey: 'key',
+      inactiveDaysThreshold: 30,
+      storeFactory: new FakeStoreFactory(store),
+      pgClientFactory: () => ({
+        connect: vi.fn(async () => undefined),
+        query: vi.fn(async () => ({ rows: [] })),
+        end: vi.fn(async () => undefined),
+      }),
+      logger,
+    })
+
+    await pruner.prune()
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Error processing connection record with id conn-invalid-time: Invalid ISO datetime: not-a-date'
+    )
+    expect(invalidTimestampSession.removed).toEqual([])
+    expect(successSession.removed).toEqual([['ConnectionRecord', 'conn-ok']])
+    expect(logger.log).toHaveBeenCalledWith(
+      'Deleted connection record with id conn-ok last active at 2000-01-01T00:00:00.000Z and associated records'
+    )
   })
 })
 

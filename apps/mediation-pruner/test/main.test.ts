@@ -29,6 +29,16 @@ describe('buildCredoMediatorPrunerOptionsFromEnv', () => {
     expect(options.pickupRepoConn.connectionString).toBe('postgres://user:pass@localhost:5432/db')
   })
 
+  it('accepts POSTGRES_URL as an alias for PICKUP_REPOSITORY_URL', () => {
+    const options = buildCredoMediatorPrunerOptionsFromEnv({
+      WALLET_URI: 'sqlite:///wallet.db',
+      POSTGRES_URL: 'postgres://user:pass@localhost:5432/db',
+      WALLET_KEY: 'secret',
+    })
+
+    expect(options.pickupRepoConn.connectionString).toBe('postgres://user:pass@localhost:5432/db')
+  })
+
   it('throws when required environment variables are missing', () => {
     expect(() => buildCredoMediatorPrunerOptionsFromEnv({})).toThrow(/Missing required environment variable/)
   })
