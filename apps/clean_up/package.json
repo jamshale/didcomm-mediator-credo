@@ -14,6 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "prestart": "pnpm build",
     "start": "node build/main.js",
+    "start:debug": "pnpm build && node --enable-source-maps --inspect-brk build/main.js",
     "test": "vitest run"
   },
   "dependencies": {

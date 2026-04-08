@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Cleanup: Launch",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/apps/clean_up",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["start:debug"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder}/apps/clean_up/build/**/*.js"]
+    }
+  ]
+}
