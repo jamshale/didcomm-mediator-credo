@@ -7,13 +7,11 @@ describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
     const options = buildCredoMediatorCleanUpOptionsFromEnv({
       WALLET_URI: 'sqlite:///wallet.db',
       PICKUP_REPOSITORY_URL: 'postgres://user:pass@localhost:5432/db',
-      WALLET_NAME: 'wallet',
       WALLET_KEY: 'secret',
       WALLET_KEY_DERIVATION_METHOD: 'ARGON2I_MOD',
       INACTIVE_DAYS_THRESHOLD: '14',
     })
 
-    expect(options.walletName).toBe('wallet')
     expect(options.walletKey).toBe('secret')
     expect(options.walletKeyDerivationMethod).toBe('ARGON2I_MOD')
     expect(options.inactiveDaysThreshold).toBe(14)
@@ -25,7 +23,6 @@ describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
     const options = buildCredoMediatorCleanUpOptionsFromEnv({
       WALLET_URI: 'sqlite:///wallet.db',
       DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
-      WALLET_NAME: 'wallet',
       WALLET_KEY: 'secret',
     })
 
@@ -41,7 +38,6 @@ describe('buildCredoMediatorCleanUpOptionsFromEnv', () => {
       buildCredoMediatorCleanUpOptionsFromEnv({
         WALLET_URI: 'sqlite:///wallet.db',
         PICKUP_REPOSITORY_URL: 'postgres://user:pass@localhost:5432/db',
-        WALLET_NAME: 'wallet',
         WALLET_KEY: 'secret',
         INACTIVE_DAYS_THRESHOLD: 'abc',
       })

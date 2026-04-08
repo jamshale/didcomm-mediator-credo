@@ -17,7 +17,6 @@ export function buildCredoMediatorCleanUpOptionsFromEnv(
   return {
     conn: createWalletConnection(walletUri),
     pickupRepoConn: parsePickupRepositoryUrl(pickupRepositoryUrl),
-    walletName: requireEnv(env, 'WALLET_NAME'),
     walletKey: requireEnv(env, 'WALLET_KEY'),
     walletKeyDerivationMethod: env.WALLET_KEY_DERIVATION_METHOD,
     inactiveDaysThreshold: parseOptionalNumber(env.INACTIVE_DAYS_THRESHOLD, 'INACTIVE_DAYS_THRESHOLD'),

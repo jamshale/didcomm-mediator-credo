@@ -194,7 +194,6 @@ describe('CredoMediatorCleanUp', () => {
     const cleanup = new CredoMediatorCleanUp({
       conn: { uri: 'sqlite:///wallet.db', connect: walletConnect, close: walletClose },
       pickupRepoConn: { connectionString: 'postgres://user:pass@localhost:5432/db' },
-      walletName: 'wallet',
       walletKey: 'key',
       inactiveDaysThreshold: 365,
       storeFactory: new FakeStoreFactory(store),
@@ -232,7 +231,6 @@ describe('CredoMediatorCleanUp', () => {
     const cleanup = new CredoMediatorCleanUp({
       conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: walletClose },
       pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
-      walletName: 'wallet',
       walletKey: 'key',
       storeFactory: new FakeStoreFactory(store),
       pgClientFactory: () => ({ connect: vi.fn(async () => undefined), query, end: vi.fn(async () => undefined) }),
@@ -263,7 +261,6 @@ describe('CredoMediatorCleanUp', () => {
       const cleanup = new CredoMediatorCleanUp({
         conn: { uri: 'sqlite:///wallet.db', connect: vi.fn(async () => undefined), close: walletClose },
         pickupRepoConn: { connectionString: 'postgres://localhost:5432/db' },
-        walletName: 'wallet',
         walletKey: 'key',
         storeFactory: new FakeStoreFactory(store),
         pgClientFactory: () => ({

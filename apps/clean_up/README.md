@@ -24,7 +24,6 @@ import { CredoMediatorCleanUp, createAskarNodeJsStoreFactory } from "./src/index
 const cleanup = new CredoMediatorCleanUp({
 	conn,
 	pickupRepoConn,
-	walletName: "wallet",
 	walletKey: "secret",
 	walletKeyDerivationMethod: "ARGON2I_MOD",
 	storeFactory: createAskarNodeJsStoreFactory(),
@@ -38,7 +37,6 @@ The package can also run as a process using environment variables:
 ```bash
 export WALLET_URI='sqlite:///wallet.db'
 export PICKUP_REPOSITORY_URL='postgres://user:pass@localhost:5432/db'
-export WALLET_NAME='wallet'
 export WALLET_KEY='secret'
 export WALLET_KEY_DERIVATION_METHOD='ARGON2I_MOD'
 export INACTIVE_DAYS_THRESHOLD='365'
@@ -50,7 +48,6 @@ Supported environment variables:
 
 - `WALLET_URI`: required Askar wallet URI.
 - `PICKUP_REPOSITORY_URL`: required Postgres connection URL for the queued message table. `DATABASE_URL` and `POSTGRES_URL` are also accepted.
-- `WALLET_NAME`: required wallet name.
 - `WALLET_KEY`: required wallet key.
 - `WALLET_KEY_DERIVATION_METHOD`: optional wallet key derivation method.
 - `INACTIVE_DAYS_THRESHOLD`: optional number of inactive days before a connection is deleted.

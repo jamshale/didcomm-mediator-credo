@@ -30,11 +30,6 @@ spec:
                     secretKeyRef:
                       name: credo-mediator-cleanup
                       key: pickup-repository-url
-                - name: WALLET_NAME
-                  valueFrom:
-                    secretKeyRef:
-                      name: credo-mediator-cleanup
-                      key: wallet-name
                 - name: WALLET_KEY
                   valueFrom:
                     secretKeyRef:

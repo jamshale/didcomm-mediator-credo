@@ -69,7 +69,6 @@ export interface Logger {
 export interface CredoMediatorCleanUpOptions {
   conn: WalletConnection
   pickupRepoConn: PickupRepositoryConnection
-  walletName: string
   walletKey: string
   walletKeyDerivationMethod?: string
   inactiveDaysThreshold?: number
@@ -124,7 +123,6 @@ export function getConnectionActivityTime(
 export class CredoMediatorCleanUp {
   private readonly conn: WalletConnection
   private readonly pickupRepoConn: PickupRepositoryConnection
-  private readonly walletName: string
   private readonly walletKey: string
   private readonly walletKeyDerivationMethod: string
   private readonly inactiveDaysThreshold: number
@@ -135,7 +133,6 @@ export class CredoMediatorCleanUp {
   public constructor(options: CredoMediatorCleanUpOptions) {
     this.conn = options.conn
     this.pickupRepoConn = options.pickupRepoConn
-    this.walletName = options.walletName
     this.walletKey = options.walletKey
     this.walletKeyDerivationMethod = options.walletKeyDerivationMethod ?? 'ARGON2I_MOD'
     this.inactiveDaysThreshold = options.inactiveDaysThreshold ?? 365
