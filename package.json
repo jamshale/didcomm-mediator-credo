@@ -23,6 +23,10 @@
   "pnpm": {
     "patchedDependencies": {
       "@credo-ts/core": "patches/@credo-ts__core.patch"
+    },
+    "overrides": {
+      "undici": "^6.27.0",
+      "@digitalbazaar/http-client": "^4.3.0"
     }
   }
 }
